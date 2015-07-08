@@ -10,7 +10,7 @@
         .byte   $00                         ; ROM only
 
         ; Size of ROM
-        .byte   $06                         ; 64 KB
+        .byte   $08                         ; 256 KB
 
         ; Size of RAM
         .byte   $00                         ; none
