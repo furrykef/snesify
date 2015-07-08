@@ -1,3 +1,13 @@
+### Our entries
+
+*.o
+*.smc
+*.sfc
+*listing*
+
+
+### Entries from GitHub for Windows
+
 # Windows image file caches
 Thumbs.db
 ehthumbs.db
