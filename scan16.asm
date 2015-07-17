@@ -163,7 +163,7 @@ HandleVblank:
         lda     #$01
         sta     MDMAEN
 
-        ; Enable V/H IRQ
+        ; Enable HV-IRQ
         lda     #$30
         sta     NMITIMEN
 
@@ -209,7 +209,7 @@ HandleIrq:
         lda     #$01
         sta     MDMAEN
 
-        ; Disable V IRQ and enable NMI
+        ; Disable V-IRQ and enable NMI
         ; (Thus we will fire IRQ every scanline until vblank disables it)
         ; NB: Make sure if NMI fires during IRQ, it happens *after* this line!
         ; Yet we want to do it after the DMA because, if we enable it too soon,

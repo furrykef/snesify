@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # Syntax: fix-checksum.py infile.smc outfile.smc
 # Only works for HiROM games (not including ExHiROM)
+# Will corrupt other types of ROMs!
 # Written for Python 3.4
 import struct
 import sys
@@ -16,8 +17,8 @@ def main(argv=None):
     for byte in romdata:
         sum += byte
         sum &= 0xffff
-    romdata[0xffde:0xffe0] = struct.pack('<H', sum)
     romdata[0xffdc:0xffde] = struct.pack('<H', ~sum & 0xffff)
+    romdata[0xffde:0xffe0] = struct.pack('<H', sum)
     with open(outfilename, 'wb') as f:
         f.write(romdata)
 
