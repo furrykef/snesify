@@ -11,16 +11,14 @@ PaletteAddr:    .res 2
 
 ChrData:
         .incbin "lenna.chr"
-ChrDataEnd:
-ChrDataSize = ChrDataEnd - ChrData
+ChrDataSize = * - ChrData
 
 
 NameData:
         .repeat 32*32, I
             .word I
         .endrepeat
-NameDataEnd:
-NameDataSize = NameDataEnd - NameData
+NameDataSize = * - NameData
 
 ; Palette will appear in another bank since we don't have enough room here
 
