@@ -3,7 +3,7 @@
 
 
 ; This value depends on how long HandleIrq takes to get to the DMA
-HIRQ_TIME = 200
+HIRQ_TIME = 201
 
 
 .segment "ZEROPAGE"
@@ -139,10 +139,16 @@ Main:
         sta     NMITIMEN
 
 forever:
-        jmp     forever
+        wai
+        bra     forever
 
 
 HandleVblank:
+        ; Use a long jump to put us in $80xxxx instead of $00xxxx
+        ; Thus running from FastROM
+        jml     HandleVblankImpl
+
+HandleVblankImpl:
         SetM16
         pha
 
@@ -186,6 +192,11 @@ HandleVblank:
 ; NMI may occur before the IRQ handler finishes (although the NMI will probably
 ; occur after the IRQ's DMA completes).
 HandleIrq:
+        ; Use a long jump to put us in $80xxxx instead of $00xxxx
+        ; Thus running from FastROM
+        jml     HandleIrqImpl
+
+HandleIrqImpl:
         SetM16
         pha
 
