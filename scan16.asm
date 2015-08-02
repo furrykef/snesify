@@ -4,8 +4,6 @@
 
 .segment "ZEROPAGE"
 
-PaletteAddr:    .res 2
-
 
 .segment "LOHALF"
 
@@ -146,7 +144,6 @@ HandleVblank:
 
         ; DMA source address
         lda     #.loword(PaletteData)
-        sta     PaletteAddr
         sta     A1T0L
 
         ; DMA size
@@ -187,13 +184,6 @@ HandleVblank:
 HandleIrq:
         SetM16
         pha
-
-        ; Update and store DMA source address
-        lda     PaletteAddr
-        clc
-        adc     #32
-        sta     PaletteAddr
-        sta     A1T0L
 
         ; DMA size
         lda     #32                         ; 16-color palettes are 32 bytes
