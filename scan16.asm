@@ -2,6 +2,10 @@
 .include "init.asm"
 
 
+; This value depends on how long HandleIrq takes to get to the DMA
+HIRQ_TIME = 200
+
+
 .segment "ZEROPAGE"
 
 
@@ -127,7 +131,7 @@ Main:
         sta     INIDISP
 
         ; Set up IRQ
-        ldx     #160                        ; This value depends on how long HandleIrq takes to get to the DMA
+        ldx     #HIRQ_TIME
         stx     HTIMEL
         ldx     #1                          ; Don't run IRQ until vblank has ended
         stx     VTIMEL
