@@ -133,7 +133,7 @@ Main:
         ; Set up IRQ
         ldx     #HIRQ_TIME
         stx     HTIMEL
-        ldx     #1                          ; Don't run IRQ until vblank has ended
+        ldx     #0                          ; Don't run IRQ until vblank has ended
         stx     VTIMEL
         lda     #$80                        ; NMI only for now
         sta     NMITIMEN
@@ -156,17 +156,9 @@ HandleVblankImpl:
         lda     #.loword(PaletteData)
         sta     A1T0L
 
-        ; DMA size
-        lda     #32                         ; 16-color palettes are 32 bytes
-        sta     DAS0L
-
-        ; Write to CGRAM address 0
+        ; Reset CGRAM address for IRQ DMA
         SetM8
         stz     CGADD
-
-        ; Execute DMA
-        lda     #$01
-        sta     MDMAEN
 
         ; Enable HV-IRQ
         lda     #$30
