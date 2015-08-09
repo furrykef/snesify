@@ -5,7 +5,7 @@ import os.path
 import struct
 import sys
 
-import numpy
+import numpy as np
 import scipy.cluster.vq
 import skimage
 import skimage.color
@@ -17,20 +17,20 @@ GAMMA_IN = 2.2
 GAMMA_OUT = 2.2
 
 
-NO_DITHERING = []
+DITHERING = False
 
-FLOYD_STEINBERG = [
+FLOYD_STEINBERG = np.array([
     [0,     0,      7/16],
     [3/16,  5/16,   1/16],
-]
+])
 
-JARVICE_JUDICE_NINKE = [
+JARVICE_JUDICE_NINKE = np.array([
     [0,     0,      0,      7/48,   5/48],
     [3/48,  5/48,   7/48,   5/48,   3/48],
     [1/48,  3/48,   5/48,   3/48,   1/48],
-]
+])
 
-DITHERING = JARVICE_JUDICE_NINKE
+DITHERING_FILTER = JARVICE_JUDICE_NINKE
 
 # If true, dither lines scanning them alternating between left-to-right and
 # right-to-left. Also called "serpentine" scanning.
@@ -76,29 +76,74 @@ def processImage(img, chr_file, pal_file):
 
 
 # NB: modifies img in-place to facilitate dithering
-# @TODO@ -- dithering
 def processLine(img, line_num):
+    _, _, num_channels = img.shape
     line = img[line_num]
     pixels = line.copy()
     palette = genPalette(pixels)
-    paletted_line = [findClosestColor(x, palette) for x in line]
+    if DITHERING:
+        reversed = BOUSTROPHEDON and line_num % 2 != 0
+        if reversed:
+            filter = DITHERING_FILTER[:,::-1]
+            the_range = range(len(line)-1, -1, -1)
+        else:
+            filter = DITHERING_FILTER
+            the_range = range(0, len(line))
+
+        # Reshape filter to number of channels
+        # If there are 3 channels, [[a,b,c]] becomes [[[a,a,a],[b,b,b],[c,c,c]]]
+        filter_height, filter_width = filter.shape
+        filter = np.repeat(filter, num_channels)
+        filter = filter.reshape((filter_height, filter_width, num_channels))
+
+        paletted_line = []
+        for col in the_range:
+            color_idx = scipy.cluster.vq.vq([line[col]], palette)[0][0]
+            paletted_line.append(color_idx)
+            delta = line[col] - palette[color_idx]
+            applyDeltas(img, filter*delta, line_num, col)
+        if reversed:
+            paletted_line.reverse()
+    else:
+        paletted_line, _ = scipy.cluster.vq.vq(line, palette)
     return paletted_line, palette
 
 
 # Use k-means to generate a 16-color palette
 # pixels should be a numpy array
 def genPalette(pixels):
-    # @TODO@ -- run scipy.cluster.vq.whiten on the data first?
-    # @TODO@ -- use kmeans or kmeans2?
+    # @TODO@ -- use kmeans, or kmeans2?
     centroids, _ = scipy.cluster.vq.kmeans(pixels, 16, check_finite=False)
-    centroids.resize((16, centroids.shape[1]))
-    return centroids
+    # Sometimes fewer than 16 colors are in the list and we have to resize to compensate
+    return np.resize(centroids, (16, centroids.shape[1]))
 
 
-# Thanks to http://stackoverflow.com/questions/1401712/how-can-the-euclidean-distance-be-calculated-with-numpy
-def findClosestColor(color, palette):
-    distances = [numpy.linalg.norm(pal_color - color) for pal_color in palette]
-    return distances.index(min(distances))
+def applyDeltas(img, delta_matrix, row, col):
+    img_height, img_width, _ = img.shape
+    mtx_height, mtx_width, _ = delta_matrix.shape
+    left_col = col - mtx_width//2
+    end_col = col + mtx_width//2 + 1
+    end_row = row + mtx_height
+
+    # All these conditions just crop delta_matrix as needed when adding
+    # the matrix to the edge of the image
+    if left_col < 0:
+        delta_matrix = delta_matrix[:,-left_col:]
+        left_col = 0
+    if end_col > img_width:
+        delta_matrix = delta_matrix[:,:img_width - end_col]
+        end_col = img_width
+    if end_row > img_height:
+        delta_matrix = delta_matrix[:img_height - end_row]
+        end_row = img_height
+    img_section = img[row:end_row,left_col:end_col]
+
+    # We're modifying img in-place
+    img_section += delta_matrix
+
+    # Make sure all values are 0..1
+    # @XXX@ -- not necessarily appropriate in non-RGB colorspaces
+    img_section[:] = img_section.clip(0.0, 1.0)
 
 
 def writePalette(palette, pal_file):
