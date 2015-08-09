@@ -4,6 +4,7 @@
 *.smc
 *.sfc
 *listing*
+__pycache__/
 
 
 ### Entries from GitHub for Windows

@@ -1,0 +1,22 @@
+These are just my notes to myself. Pay no mind.
+
+
+Gamma
+-----
+There are two different gamma issues:
+* The SNES/TV has a higher gamma; using the raw RGB values may result in an image that's too dark.
+* Gamma affects dithering. Dithering should be applied to an image with a gamma of 1.0.
+
+What we should do is specify an input gamma (defaulting to 2.2) and an output gamma (defaulting to whatever is appropriate for the SNES). Our conversion program first converts the image to linear RGB (i.e. applying gamma correction of 0.45 if the input gamma was 2.2), then when we're done, the output gamma is applied to the palette's RGB values.
+
+Taking a screenshot from BSNES and adjusting the gamma in GIMP by 1.5 seems to reproduce the original gamma. The proper adjustment value might be anywhere from 1.5 to 1.8. Assuming the proper adjustment value is 1.5, then the SNES's gamma is 2.2 * 1.5 = 3.3. (I've tried using the higan sources to find the proper gamma value, but the gamma ramp I found starts out exponential and then goes strangely linear.)
+
+
+Dithering
+---------
+http://bisqwit.iki.fi/story/howto/dither/jy/ (Knoll-Yliluoma)
+
+
+Color space
+-----------
+Using the Lab color space during the conversion may yield better results than using RGB, since Euclidean distance is supposed to line up better with human perception in that color space.

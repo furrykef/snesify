@@ -6,7 +6,6 @@ import struct
 import sys
 
 import numpy
-import scipy.cluster.vq
 import skimage
 import skimage.color
 import skimage.exposure
@@ -85,14 +84,27 @@ def processLine(img, line_num):
     return paletted_line, palette
 
 
-# Use k-means to generate a 16-color palette
+# Use median cut to generate a 16-color palette
 # pixels should be a numpy array
 def genPalette(pixels):
-    # @TODO@ -- run scipy.cluster.vq.whiten on the data first?
-    # @TODO@ -- use kmeans or kmeans2?
-    centroids, _ = scipy.cluster.vq.kmeans(pixels, 16, check_finite=False)
-    centroids.resize((16, centroids.shape[1]))
-    return centroids
+    # 4 iterations will result in 16 colors
+    return numpy.array(getMedianCut(pixels, 4))
+
+# Return value is list, not array!
+def getMedianCut(pixels, depth):
+    if depth == 0:
+        return [numpy.mean(pixels, axis=0)]
+    channel_num = findChannelWithGreatestRange(pixels)
+    sorted_pixels = numpy.array(sorted(pixels, key=lambda pixel: pixel[channel_num]))
+    median = len(sorted_pixels)//2
+    lesser = sorted_pixels[:median]
+    greater = sorted_pixels[median:]
+    return getMedianCut(lesser, depth - 1) + getMedianCut(greater, depth - 1)
+
+def findChannelWithGreatestRange(pixels):
+    _, num_channels = pixels.shape
+    channel_ranges = [max(pixels[:,i]) - min(pixels[:,i]) for i in range(num_channels)]
+    return channel_ranges.index(max(channel_ranges))
 
 
 # Thanks to http://stackoverflow.com/questions/1401712/how-can-the-euclidean-distance-be-calculated-with-numpy
