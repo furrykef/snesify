@@ -105,8 +105,8 @@ def processLine(img, line_num):
         for col in the_range:
             color_idx = scipy.cluster.vq.vq([line[col]], palette)[0][0]
             paletted_line.append(color_idx)
-            delta = line[col] - palette[color_idx]
-            applyDeltas(img, filter*delta, line_num, col)
+            error = line[col] - palette[color_idx]
+            applyDeltas(img, filter*error, line_num, col)
         if reversed:
             paletted_line.reverse()
     else:
@@ -123,28 +123,28 @@ def genPalette(pixels):
     return np.resize(centroids, (16, centroids.shape[1]))
 
 
-def applyDeltas(img, delta_matrix, row, col):
+def applyDeltas(img, diffused_error, row, col):
     img_height, img_width, _ = img.shape
-    mtx_height, mtx_width, _ = delta_matrix.shape
-    left_col = col - mtx_width//2
-    end_col = col + mtx_width//2 + 1
-    end_row = row + mtx_height
+    err_height, err_width, _ = diffused_error.shape
+    left_col = col - err_width//2
+    end_col = col + err_width//2 + 1
+    end_row = row + err_height
 
-    # All these conditions just crop delta_matrix as needed when adding
-    # the matrix to the edge of the image
+    # All these conditions just crop diffused_error as needed when
+    # adding it to the edge of the image
     if left_col < 0:
-        delta_matrix = delta_matrix[:,-left_col:]
+        diffused_error = diffused_error[:,-left_col:]
         left_col = 0
     if end_col > img_width:
-        delta_matrix = delta_matrix[:,:img_width - end_col]
+        diffused_error = diffused_error[:,:img_width - end_col]
         end_col = img_width
     if end_row > img_height:
-        delta_matrix = delta_matrix[:img_height - end_row]
+        diffused_error = diffused_error[:img_height - end_row]
         end_row = img_height
     img_section = img[row:end_row,left_col:end_col]
 
     # We're modifying img in-place
-    img_section += delta_matrix
+    img_section += diffused_error
 
     # Make sure all values are 0..1
     # @XXX@ -- not necessarily appropriate in non-RGB colorspaces
