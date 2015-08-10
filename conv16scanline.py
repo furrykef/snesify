@@ -17,8 +17,12 @@ GAMMA_IN = 2.2
 GAMMA_OUT = 2.2
 
 
-# If true, palettes generated for each line also account for previous and next lines
-USE_SURROUNDING_LINES = True
+# How many surrounding lines to look at when generating palette.
+# For example, when generating a palette for line 10, when this is 3, it will
+# generate a palette using lines [7..13].
+#
+# Set to 0 to not look at surrounding lines.
+SURROUNDING_LINES = 7
 
 DITHERING = False
 
@@ -82,10 +86,11 @@ def processImage(img, chr_file, pal_file):
 def processLine(img, line_num):
     height, width, num_channels = img.shape
     line = img[line_num]
-    prev_line = img[line_num-1] if USE_SURROUNDING_LINES and line_num > 0 else np.empty(shape=(0,3))
-    next_line = img[line_num+1] if USE_SURROUNDING_LINES and line_num+1 < height else np.empty(shape=(0,3))
-    pixels = np.concatenate((line, prev_line, next_line))
-    palette = genPalette(pixels)
+    pal_first_line_num = max(0, line_num-SURROUNDING_LINES)
+    pal_end_line_num = min(height, line_num + SURROUNDING_LINES + 1)
+    pal_num_rows = pal_end_line_num - pal_first_line_num
+    pal_lines = img[pal_first_line_num:pal_end_line_num].reshape((width*pal_num_rows, num_channels))
+    palette = genPalette(pal_lines)
     if DITHERING:
         reversed = BOUSTROPHEDON and line_num % 2 != 0
         if reversed:
