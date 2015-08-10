@@ -7,7 +7,6 @@ import sys
 
 import numpy as np
 import scipy.cluster.vq
-import skimage
 import skimage.color
 import skimage.exposure
 import skimage.io
@@ -122,7 +121,6 @@ def processLine(img, line_num):
 # Use k-means to generate a 16-color palette
 # pixels should be a numpy array
 def genPalette(pixels):
-    # @TODO@ -- use kmeans, or kmeans2?
     centroids, _ = scipy.cluster.vq.kmeans(pixels, 16, check_finite=False)
     # Sometimes fewer than 16 colors are in the list and we have to resize to compensate
     return np.resize(centroids, (16, centroids.shape[1]))
