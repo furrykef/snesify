@@ -17,6 +17,9 @@ GAMMA_IN = 2.2
 GAMMA_OUT = 2.2
 
 
+# If true, palettes generated for each line also account for previous and next lines
+USE_SURROUNDING_LINES = True
+
 DITHERING = False
 
 FLOYD_STEINBERG = np.array([
@@ -77,9 +80,11 @@ def processImage(img, chr_file, pal_file):
 
 # NB: modifies img in-place to facilitate dithering
 def processLine(img, line_num):
-    _, _, num_channels = img.shape
+    height, width, num_channels = img.shape
     line = img[line_num]
-    pixels = line.copy()
+    prev_line = img[line_num-1] if USE_SURROUNDING_LINES and line_num > 0 else np.empty(shape=(0,3))
+    next_line = img[line_num+1] if USE_SURROUNDING_LINES and line_num+1 < height else np.empty(shape=(0,3))
+    pixels = np.concatenate((line, prev_line, next_line))
     palette = genPalette(pixels)
     if DITHERING:
         reversed = BOUSTROPHEDON and line_num % 2 != 0
