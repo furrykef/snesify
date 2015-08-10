@@ -16,8 +16,6 @@ Dithering
 ---------
 http://bisqwit.iki.fi/story/howto/dither/jy/ (Knoll-Yliluoma)
 
-Dithering can be improved by not clamping to 0..1 except when quantizing pixels.
-
 
 Color space
 -----------

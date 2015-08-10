@@ -16,12 +16,17 @@ GAMMA_IN = 2.2
 GAMMA_OUT = 2.2
 
 
+# If True, first generate a 16-color palette for the entire image.
+# This is used as the estimate passed to kmeans on each line.
+# This speeds up processing but may result in fewer total colors.
+USE_ESTIMATED_PALETTE = True
+
 # How many surrounding lines to look at when generating palette.
 # For example, when generating a palette for line 10, when this is 3, it will
 # generate a palette using lines [7..13].
 #
 # Set to 0 to not look at surrounding lines.
-SURROUNDING_LINES = 7
+SURROUNDING_LINES = 0
 
 DITHERING = False
 
@@ -70,26 +75,30 @@ def changeExtension(filename, new_extension):
 # img should be a 2D numpy array of pixels
 # (really a 3D array of color components)
 def processImage(img, chr_file, pal_file):
-    height, width, _ = img.shape
+    height, width, num_channels = img.shape
+    if USE_ESTIMATED_PALETTE:
+        estimated_palette = genPalette(img.reshape((width*height, num_channels)))
+    else:
+        estimated_palette = None
     for row_num in range(height//8):
         scanline_rows = []
         for i in range(8):
             scanline_num = row_num*8 + i
-            paletted_line, palette = processLine(img, scanline_num)
+            paletted_line, palette = processLine(img, scanline_num, estimated_palette)
             writePalette(palette, pal_file)
             scanline_rows.append(paletted_line)
         writeChrRow(scanline_rows, chr_file)
 
 
 # NB: modifies img in-place to facilitate dithering
-def processLine(img, line_num):
+def processLine(img, line_num, estimated_palette):
     height, width, num_channels = img.shape
     line = img[line_num]
     pal_first_line_num = max(0, line_num-SURROUNDING_LINES)
     pal_end_line_num = min(height, line_num + SURROUNDING_LINES + 1)
     pal_num_rows = pal_end_line_num - pal_first_line_num
     pal_lines = img[pal_first_line_num:pal_end_line_num].reshape((width*pal_num_rows, num_channels))
-    palette = genPalette(pal_lines)
+    palette = genPalette(pal_lines, estimated_palette)
     if DITHERING:
         reversed = BOUSTROPHEDON and line_num % 2 != 0
         if reversed:
@@ -120,8 +129,15 @@ def processLine(img, line_num):
 
 # Use k-means to generate a 16-color palette
 # pixels should be a numpy array
-def genPalette(pixels):
-    centroids, _ = scipy.cluster.vq.kmeans(pixels, 16, check_finite=False)
+def genPalette(pixels, estimated_palette=None):
+    # Make sure all values are 0..1
+    # @XXX@ -- not necessarily appropriate in non-RGB colorspaces
+    pixels = pixels.clip(0.0, 1.0)
+    centroids, _ = scipy.cluster.vq.kmeans(
+        pixels,
+        estimated_palette if estimated_palette is not None else 16,
+        check_finite=False
+    )
     # Sometimes fewer than 16 colors are in the list and we have to resize to compensate
     return np.resize(centroids, (16, centroids.shape[1]))
 
@@ -148,10 +164,6 @@ def applyDeltas(img, diffused_error, row, col):
 
     # We're modifying img in-place
     img_section += diffused_error
-
-    # Make sure all values are 0..1
-    # @XXX@ -- not necessarily appropriate in non-RGB colorspaces
-    img_section[:] = img_section.clip(0.0, 1.0)
 
 
 def writePalette(palette, pal_file):
