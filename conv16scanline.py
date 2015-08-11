@@ -2,6 +2,7 @@
 # Syntax: conv16scanline.py in.png
 # Written for Python 3.4 with the pillow and scikit-image libraries
 import argparse
+import cProfile as profile
 import os.path
 import platform
 import struct
@@ -58,27 +59,32 @@ def main(argv=None):
     if argv is None:
         argv = sys.argv[1:]
     options = parseArgs(argv)
-    for infilename in options.files:
+    for filename in options.files:
         if options.verbose:
-            print(infilename, end=' ', flush=True)
+            print(filename, end=' ', flush=True)
             start_time = time.perf_counter()
-        try:
-            img = skimage.io.imread(infilename)[:,:,:3] # The slice will remove any alpha channel
-        except (OSError, IOError) as e:
-            print("{}: {}".format(infilename, e), file=sys.stderr)
-            return 1
-        if USE_LAB:
-            img = skimage.color.rgb2lab(img)
-        else:
-            img = skimage.img_as_float(img)
-            img = skimage.exposure.adjust_gamma(img, gamma=options.gamma_in)
-        chr_filename = changeExtension(infilename, '.chr')
-        pal_filename = changeExtension(infilename, '.pal')
-        with open(chr_filename, 'wb') as chr_file:
-            with open(pal_filename, 'wb') as pal_file:
-                processImage(img, chr_file, pal_file, options)
+        runner = profile.runctx if options.profile else exec
+        runner("processFile(filename, options)", globals(), locals())
         if options.verbose:
             print("({:.2f} secs)".format(time.perf_counter() - start_time))
+
+
+def processFile(filename, options):
+    try:
+        img = skimage.io.imread(filename)[:,:,:3]   # The slice will remove any alpha channel
+    except (OSError, IOError) as e:
+        print("{}: {}".format(filename, e), file=sys.stderr)
+        return 1
+    if USE_LAB:
+        img = skimage.color.rgb2lab(img)
+    else:
+        img = skimage.img_as_float(img)
+        img = skimage.exposure.adjust_gamma(img, gamma=options.gamma_in)
+    chr_filename = changeExtension(filename, '.chr')
+    pal_filename = changeExtension(filename, '.pal')
+    with open(chr_filename, 'wb') as chr_file:
+        with open(pal_filename, 'wb') as pal_file:
+            processImage(img, chr_file, pal_file, options)
 
 
 def parseArgs(argv):
@@ -90,7 +96,8 @@ def parseArgs(argv):
     parser.add_argument('--seed', action='store_const', const=True)
     parser.add_argument('--dither', choices=DITHER_FILTERS.keys())
     parser.add_argument('--no-boustrophedon', action='store_const', const=True)
-    parser.add_argument('--surrounding-lines', type=int, default=0)
+    parser.add_argument('--window', type=int, default=0)
+    parser.add_argument('--profile', action='store_const', const=True)
     args = parser.parse_args()
     # @TODO@ -- some other non-Unix OSes may need this behavior
     # @TODO@ -- more elegant way to do this?
@@ -134,8 +141,8 @@ def processImage(img, chr_file, pal_file, options):
 def processLine(img, line_num, estimated_palette, options):
     height, width, num_channels = img.shape
     line = img[line_num]
-    pal_first_line_num = max(0, line_num - options.surrounding_lines)
-    pal_end_line_num = min(height, line_num + options.surrounding_lines + 1)
+    pal_first_line_num = max(0, line_num - options.window)
+    pal_end_line_num = min(height, line_num + options.window + 1)
     pal_num_rows = pal_end_line_num - pal_first_line_num
     pal_lines = img[pal_first_line_num:pal_end_line_num].reshape((width*pal_num_rows, num_channels))
     palette = genPalette(pal_lines, estimated_palette)
