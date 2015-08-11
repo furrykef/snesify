@@ -1,9 +1,12 @@
 #!/usr/bin/env python
 # Syntax: conv16scanline.py in.png
 # Written for Python 3.4 with the pillow and scikit-image libraries
+import argparse
 import os.path
+import platform
 import struct
 import sys
+import time
 
 import numpy as np
 import scipy.cluster.vq
@@ -12,40 +15,40 @@ import skimage.exposure
 import skimage.io
 
 
-GAMMA_IN = 2.2
-GAMMA_OUT = 2.2
-
-
-# If True, first generate a 16-color palette for the entire image.
-# This is used as the estimate passed to kmeans on each line.
-# This speeds up processing but may result in fewer total colors.
-USE_ESTIMATED_PALETTE = True
-
-# How many surrounding lines to look at when generating palette.
-# For example, when generating a palette for line 10, when this is 3, it will
-# generate a palette using lines [7..13].
-#
-# Set to 0 to not look at surrounding lines.
-SURROUNDING_LINES = 0
-
-DITHERING = False
-
 FLOYD_STEINBERG = np.array([
-    [0,     0,      7/16],
-    [3/16,  5/16,   1/16],
-])
+    [0, 0, 7],
+    [3, 5, 1],
+]) / 16
 
-JARVICE_JUDICE_NINKE = np.array([
-    [0,     0,      0,      7/48,   5/48],
-    [3/48,  5/48,   7/48,   5/48,   3/48],
-    [1/48,  3/48,   5/48,   3/48,   1/48],
-])
+JARVIS_JUDICE_NINKE = np.array([
+    [0, 0, 0, 7, 5],
+    [3, 5, 7, 5, 3],
+    [1, 3, 5, 3, 1],
+]) / 48
 
-DITHERING_FILTER = JARVICE_JUDICE_NINKE
+STUCKI = np.array([
+    [0, 0, 0, 8, 4],
+    [2, 4, 8, 4, 2],
+    [1, 2, 4, 2, 1],
+]) / 42
 
-# If true, dither lines scanning them alternating between left-to-right and
-# right-to-left. Also called "serpentine" scanning.
-BOUSTROPHEDON = True
+ATKINSON = np.array([
+    [0, 0, 0, 1, 1],
+    [0, 1, 1, 1, 0],
+    [0, 0, 1, 0, 0],
+]) / 8
+
+DITHER_FILTERS = {
+    'fs': FLOYD_STEINBERG,
+    'f-s': FLOYD_STEINBERG,
+    'floyd-steinberg': FLOYD_STEINBERG,
+    'jjn': JARVIS_JUDICE_NINKE,
+    'j-j-n': JARVIS_JUDICE_NINKE,
+    'jarvis-judice-ninke': JARVIS_JUDICE_NINKE,
+    'stucki': STUCKI,
+    'atkinson': ATKINSON,
+}
+
 
 # Use Lab instead of RGB
 USE_LAB = False
@@ -54,18 +57,55 @@ USE_LAB = False
 def main(argv=None):
     if argv is None:
         argv = sys.argv[1:]
-    infilename = argv[0]
-    img = skimage.io.imread(infilename)[:,:,:3] # The slice will remove any alpha channel
-    if USE_LAB:
-        img = skimage.color.rgb2lab(img)
-    else:
-        img = skimage.img_as_float(img)
-        img = skimage.exposure.adjust_gamma(img, gamma=GAMMA_IN)
-    chr_filename = changeExtension(infilename, '.chr')
-    pal_filename = changeExtension(infilename, '.pal')
-    with open(chr_filename, 'wb') as chr_file:
-        with open(pal_filename, 'wb') as pal_file:
-            processImage(img, chr_file, pal_file)
+    options = parseArgs(argv)
+    for infilename in options.files:
+        if options.verbose:
+            print(infilename, end=' ', flush=True)
+            start_time = time.perf_counter()
+        try:
+            img = skimage.io.imread(infilename)[:,:,:3] # The slice will remove any alpha channel
+        except (OSError, IOError) as e:
+            print("{}: {}".format(infilename, e), file=sys.stderr)
+            return 1
+        if USE_LAB:
+            img = skimage.color.rgb2lab(img)
+        else:
+            img = skimage.img_as_float(img)
+            img = skimage.exposure.adjust_gamma(img, gamma=options.gamma_in)
+        chr_filename = changeExtension(infilename, '.chr')
+        pal_filename = changeExtension(infilename, '.pal')
+        with open(chr_filename, 'wb') as chr_file:
+            with open(pal_filename, 'wb') as pal_file:
+                processImage(img, chr_file, pal_file, options)
+        if options.verbose:
+            print("({:.2f} secs)".format(time.perf_counter() - start_time))
+
+
+def parseArgs(argv):
+    parser = argparse.ArgumentParser(argv)
+    parser.add_argument('files', nargs='+')
+    parser.add_argument('--verbose', '-v', action='count')
+    parser.add_argument('--gamma-in', type=float, default=1.0)
+    parser.add_argument('--gamma-out', type=float, default=1.0)
+    parser.add_argument('--seed', action='store_const', const=True)
+    parser.add_argument('--dither', choices=DITHER_FILTERS.keys())
+    parser.add_argument('--no-boustrophedon', action='store_const', const=True)
+    parser.add_argument('--surrounding-lines', type=int, default=0)
+    args = parser.parse_args()
+    # @TODO@ -- some other non-Unix OSes may need this behavior
+    # @TODO@ -- more elegant way to do this?
+    if platform.system() == 'Windows':
+        import glob
+        filenames = []
+        for filename in args.files:
+            if '*' in filename or '?' in filename or '[' in filename:
+                filenames += glob.glob(filename)
+            else:
+                filenames.append(filename)
+        args.files = filenames
+    args.dither_filter = DITHER_FILTERS[args.dither] if args.dither else None
+    args.boustrophedon = not args.no_boustrophedon
+    return args
 
 
 def changeExtension(filename, new_extension):
@@ -74,9 +114,9 @@ def changeExtension(filename, new_extension):
 
 # img should be a 2D numpy array of pixels
 # (really a 3D array of color components)
-def processImage(img, chr_file, pal_file):
+def processImage(img, chr_file, pal_file, options):
     height, width, num_channels = img.shape
-    if USE_ESTIMATED_PALETTE:
+    if options.seed:
         estimated_palette = genPalette(img.reshape((width*height, num_channels)))
     else:
         estimated_palette = None
@@ -84,28 +124,28 @@ def processImage(img, chr_file, pal_file):
         scanline_rows = []
         for i in range(8):
             scanline_num = row_num*8 + i
-            paletted_line, palette = processLine(img, scanline_num, estimated_palette)
-            writePalette(palette, pal_file)
+            paletted_line, palette = processLine(img, scanline_num, estimated_palette, options)
+            writePalette(palette, pal_file, options)
             scanline_rows.append(paletted_line)
         writeChrRow(scanline_rows, chr_file)
 
 
 # NB: modifies img in-place to facilitate dithering
-def processLine(img, line_num, estimated_palette):
+def processLine(img, line_num, estimated_palette, options):
     height, width, num_channels = img.shape
     line = img[line_num]
-    pal_first_line_num = max(0, line_num-SURROUNDING_LINES)
-    pal_end_line_num = min(height, line_num + SURROUNDING_LINES + 1)
+    pal_first_line_num = max(0, line_num - options.surrounding_lines)
+    pal_end_line_num = min(height, line_num + options.surrounding_lines + 1)
     pal_num_rows = pal_end_line_num - pal_first_line_num
     pal_lines = img[pal_first_line_num:pal_end_line_num].reshape((width*pal_num_rows, num_channels))
     palette = genPalette(pal_lines, estimated_palette)
-    if DITHERING:
-        reversed = BOUSTROPHEDON and line_num % 2 != 0
+    if options.dither_filter is not None:
+        reversed = options.boustrophedon and line_num % 2 != 0
         if reversed:
-            filter = DITHERING_FILTER[:,::-1]
+            filter = options.dither_filter[:,::-1]
             the_range = range(len(line)-1, -1, -1)
         else:
-            filter = DITHERING_FILTER
+            filter = options.dither_filter
             the_range = range(0, len(line))
 
         # Reshape filter to number of channels
@@ -166,11 +206,11 @@ def applyDeltas(img, diffused_error, row, col):
     img_section += diffused_error
 
 
-def writePalette(palette, pal_file):
+def writePalette(palette, pal_file, options):
     if USE_LAB:
         palette = skimage.color.lab2rgb([palette])[0]
     else:
-        palette = skimage.exposure.adjust_gamma(palette, gamma=1.0/GAMMA_OUT)
+        palette = skimage.exposure.adjust_gamma(palette, gamma=1.0/options.gamma_out)
     palette = scaleColors(palette, 31)
     for (r, g, b) in palette:
         # Convert to 0bbbbbgggggrrrrr
@@ -201,4 +241,4 @@ def writeChrRow(scanline_rows, chr_file):
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

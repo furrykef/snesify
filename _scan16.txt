@@ -3,9 +3,11 @@ These are just my notes to myself. Pay no mind.
 
 Gamma
 -----
+NB: the Lenna test image is not gamma-corrected. It should have an input gamma of 1.0.
+
 There are two different gamma issues:
 * The SNES/TV has a higher gamma; using the raw RGB values may result in an image that's too dark.
-* Gamma affects dithering. Dithering should be applied to an image with a gamma of 1.0.
+* Gamma affects dithering. Dithering should be applied to a linear RGB image (or equivalent).
 
 What we should do is specify an input gamma (defaulting to 2.2) and an output gamma (defaulting to whatever is appropriate for the SNES). Our conversion program first converts the image to linear RGB (i.e. applying gamma correction of 0.45 if the input gamma was 2.2), then when we're done, the output gamma is applied to the palette's RGB values.
 
