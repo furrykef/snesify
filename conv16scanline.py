@@ -1,6 +1,7 @@
 #!/usr/bin/env python
-# Syntax: conv16scanline.py in.png
 # Written for Python 3.4 with the pillow and scikit-image libraries
+# @TODO@ -- range check numeric command-line arguments
+# @TODO@ -- consider click instead of argparse
 import argparse
 import cProfile as profile
 import os.path
@@ -93,11 +94,11 @@ def parseArgs(argv):
     parser.add_argument('--verbose', '-v', action='count')
     parser.add_argument('--gamma-in', type=float, default=1.0)
     parser.add_argument('--gamma-out', type=float, default=1.0)
-    parser.add_argument('--seed', action='store_const', const=True)
+    parser.add_argument('--seed', action='store_true')
     parser.add_argument('--dither', choices=DITHER_FILTERS.keys())
-    parser.add_argument('--no-boustrophedon', action='store_const', const=True)
+    parser.add_argument('--no-boustrophedon', action='store_true')
     parser.add_argument('--window', type=int, default=0)
-    parser.add_argument('--profile', action='store_const', const=True)
+    parser.add_argument('--profile', action='store_true')
     args = parser.parse_args()
     # @TODO@ -- some other non-Unix OSes may need this behavior
     # @TODO@ -- more elegant way to do this?
@@ -110,7 +111,7 @@ def parseArgs(argv):
             else:
                 filenames.append(filename)
         args.files = filenames
-    args.dither_filter = DITHER_FILTERS[args.dither] if args.dither else None
+    args.diffusion_filter = DITHER_FILTERS[args.dither] if args.dither else None
     args.boustrophedon = not args.no_boustrophedon
     return args
 
@@ -127,51 +128,61 @@ def processImage(img, chr_file, pal_file, options):
         estimated_palette = genPalette(img.reshape((width*height, num_channels)))
     else:
         estimated_palette = None
+    diffusion_filter = extendFilter(options.diffusion_filter, num_channels)
     for row_num in range(height//8):
         scanline_rows = []
         for i in range(8):
             scanline_num = row_num*8 + i
-            paletted_line, palette = processLine(img, scanline_num, estimated_palette, options)
+            paletted_line, palette = processLine(img,
+                                                 scanline_num,
+                                                 estimated_palette,
+                                                 diffusion_filter,
+                                                 options)
             writePalette(palette, pal_file, options)
             scanline_rows.append(paletted_line)
         writeChrRow(scanline_rows, chr_file)
 
 
 # NB: modifies img in-place to facilitate dithering
-def processLine(img, line_num, estimated_palette, options):
+def processLine(img, line_num, estimated_palette, diffusion_filter, options):
     height, width, num_channels = img.shape
     line = img[line_num]
-    pal_first_line_num = max(0, line_num - options.window)
-    pal_end_line_num = min(height, line_num + options.window + 1)
-    pal_num_rows = pal_end_line_num - pal_first_line_num
-    pal_lines = img[pal_first_line_num:pal_end_line_num].reshape((width*pal_num_rows, num_channels))
-    palette = genPalette(pal_lines, estimated_palette)
-    if options.dither_filter is not None:
+    pal_window = getWindow(img, line_num, options)
+    palette = genPalette(pal_window, estimated_palette)
+    if diffusion_filter is not None:
         reversed = options.boustrophedon and line_num % 2 != 0
         if reversed:
-            filter = options.dither_filter[:,::-1]
+            diffusion_filter = diffusion_filter[:,::-1]
             the_range = range(len(line)-1, -1, -1)
         else:
-            filter = options.dither_filter
             the_range = range(0, len(line))
-
-        # Reshape filter to number of channels
-        # If there are 3 channels, [[a,b,c]] becomes [[[a,a,a],[b,b,b],[c,c,c]]]
-        filter_height, filter_width = filter.shape
-        filter = np.repeat(filter, num_channels)
-        filter = filter.reshape((filter_height, filter_width, num_channels))
-
         paletted_line = []
         for col in the_range:
-            color_idx = scipy.cluster.vq.vq([line[col]], palette)[0][0]
+            color_idx = scipy.cluster.vq.vq([line[col]], palette, check_finite=False)[0][0]
             paletted_line.append(color_idx)
             error = line[col] - palette[color_idx]
-            applyDeltas(img, filter*error, line_num, col)
+            addDiffusedError(img, diffusion_filter*error, line_num, col)
         if reversed:
             paletted_line.reverse()
     else:
-        paletted_line, _ = scipy.cluster.vq.vq(line, palette)
+        paletted_line, _ = scipy.cluster.vq.vq(line, palette, check_finite=False)
     return paletted_line, palette
+
+def getWindow(img, line_num, options):
+    height, width, num_channels = img.shape
+    pal_first_line_num = max(0, line_num - options.window)
+    pal_end_line_num = min(height, line_num + options.window + 1)
+    pal_num_rows = pal_end_line_num - pal_first_line_num
+    return img[pal_first_line_num:pal_end_line_num].reshape((width*pal_num_rows, num_channels))
+
+# Reshape filter to number of channels
+# If there are 3 channels, [[a,b,c]] becomes [[[a,a,a],[b,b,b],[c,c,c]]]
+def extendFilter(filter, num_channels):
+    if filter is None:
+        return None
+    filter_height, filter_width = filter.shape
+    filter = np.repeat(filter, num_channels)
+    return filter.reshape((filter_height, filter_width, num_channels))
 
 
 # Use k-means to generate a 16-color palette
@@ -189,7 +200,7 @@ def genPalette(pixels, estimated_palette=None):
     return np.resize(centroids, (16, centroids.shape[1]))
 
 
-def applyDeltas(img, diffused_error, row, col):
+def addDiffusedError(img, diffused_error, row, col):
     img_height, img_width, _ = img.shape
     err_height, err_width, _ = diffused_error.shape
     left_col = col - err_width//2
