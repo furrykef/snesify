@@ -142,6 +142,15 @@ def processImage(img, chr_file, pal_file, options):
             scanline_rows.append(paletted_line)
         writeChrRow(scanline_rows, chr_file)
 
+# Reshape filter to number of channels
+# If there are 3 channels, [[a,b,c]] becomes [[[a,a,a],[b,b,b],[c,c,c]]]
+def extendFilter(filter, num_channels):
+    if filter is None:
+        return None
+    filter_height, filter_width = filter.shape
+    filter = np.repeat(filter, num_channels)
+    return filter.reshape((filter_height, filter_width, num_channels))
+
 
 # NB: modifies img in-place to facilitate dithering
 def processLine(img, line_num, estimated_palette, diffusion_filter, options):
@@ -174,16 +183,6 @@ def getWindow(img, line_num, options):
     pal_end_line_num = min(height, line_num + options.window + 1)
     pal_num_rows = pal_end_line_num - pal_first_line_num
     return img[pal_first_line_num:pal_end_line_num].reshape((width*pal_num_rows, num_channels))
-
-# Reshape filter to number of channels
-# If there are 3 channels, [[a,b,c]] becomes [[[a,a,a],[b,b,b],[c,c,c]]]
-def extendFilter(filter, num_channels):
-    if filter is None:
-        return None
-    filter_height, filter_width = filter.shape
-    filter = np.repeat(filter, num_channels)
-    return filter.reshape((filter_height, filter_width, num_channels))
-
 
 # Use k-means to generate a 16-color palette
 # pixels should be a numpy array
