@@ -12,10 +12,12 @@ HIRQ_TIME = 201
 
 .segment "LOHALF"
 
-ChrData:
-        .incbin "images/scan16/lenna.chr"
-ChrDataSize = * - ChrData
+.macro BinData name, filename
+.ident(name): .incbin filename
+.ident(.concat(name, "Size")) = * - .ident(name)
+.endmacro
 
+BinData "LennaScan16Chr", "images/scan16/lenna.chr"
 
 NameData:
         .repeat 32*32, I
@@ -23,14 +25,22 @@ NameData:
         .endrepeat
 NameDataSize = * - NameData
 
-; Palette will appear in another bank since we don't have enough room here
+
+.segment "BANK1"
+
+BinData "LennaScan16Pal", "images/scan16/lenna.pal"
+BinData "Lenna2Chr", "images/2bit/lenna.chr"
+BinData "Lenna2Pal", "images/2bit/lenna.pal"
+BinData "Lenna4Chr", "images/4bit/lenna.chr"
+BinData "Lenna4Pal", "images/4bit/lenna.pal"
+
+.segment "BANK2"
+
+BinData "Lenna8Chr", "images/8bit/lenna.chr"
+BinData "Lenna8Pal", "images/8bit/lenna.pal"
 
 
 .segment "CODE"
-
-PaletteData:
-        .incbin "images/scan16/lenna.pal"
-
 
 Main:
         SetM8
@@ -70,9 +80,9 @@ Main:
         sta     DMAP0
 
         ; DMA source address
-        ldx     #.loword(ChrData)
+        ldx     #.loword(LennaScan16Chr)
         stx     A1T0L
-        lda     #^ChrData
+        lda     #^LennaScan16Chr
         sta     A1B0
 
         ; DMA destination register
@@ -80,7 +90,7 @@ Main:
         sta     BBAD0
 
         ; DMA size
-        ldx     #ChrDataSize
+        ldx     #LennaScan16ChrSize
         stx     DAS0L
 
         ; Set VRAM destination address
@@ -120,7 +130,7 @@ Main:
         stz     DMAP0                       ; 8-bit xfer to single register, incrementing
 
         ; DMA source bank
-        lda     #^PaletteData               ; not auto-updated during DMA
+        lda     #^LennaScan16Pal            ; not auto-updated during DMA
         sta     A1B0
 
         ; DMA destination register
@@ -154,7 +164,7 @@ HandleVblankImpl:
         pha
 
         ; DMA source address
-        lda     #.loword(PaletteData)
+        lda     #.loword(LennaScan16Pal)
         sta     A1T0L
 
         ; Reset CGRAM address for IRQ DMA
