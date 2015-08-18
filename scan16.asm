@@ -3,6 +3,7 @@
 
 
 ; This value depends on how long HandleIrq takes to get to the DMA
+; See the big comment at HandleIrq
 HIRQ_TIME = 201
 
 
@@ -170,7 +171,7 @@ HandleVblankImpl:
 .a8
 
 
-; Use BSNES debugger to time this function up to the "sta MDMAEN" instruction.
+; Use BSNES debugger to time this function up to the STA MDMAEN instruction.
 ; The H register in BSNES is the number of master cycles taken for the current
 ; scanline. hblank begins at H=1096 (according to CPU::mmio_r4212 in higan
 ; source), so you want the DMA to begin then. I *think* the DMA will begin at
@@ -179,6 +180,16 @@ HandleVblankImpl:
 ; should say H=1072 (it's OK to overshoot by a few cycles, but don't go under).
 ; H will not be the same on every scanline, so be sure to check the value for
 ; several iterations.
+;
+; To control when this function is called, tweak HIRQ_TIME at the top of this
+; program. If the STA MDMAEN instruction finishes too early, increase the value;
+; if it finishes too late, decrease it. You'll probably have to tweak it a few
+; times before it's right, and, again, be sure to test several iterations, not
+; just one.
+;
+; NOTE: Do not use BSNES Plus 0.73+1 to calibrate the timing; its cycle counts
+; are wrong when you step through a program in the debugger. BSNES 0.65 gets it
+; right, as should later versions of BSNES Plus.
 ;
 ; Note that if you run this IRQ on the screen's last scanline, the vblank
 ; NMI may occur before the IRQ handler finishes (although the NMI will probably
