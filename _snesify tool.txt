@@ -1,0 +1,36 @@
+Check number of unique colors
+-----------------------------
+If the image has no more than the number of allowed colors, skip quantization.
+
+
+Alpha
+-----
+Two settings, on and off. Not sure which to make default.
+
+If off, then the image's alpha channel is chopped off and a full palette is generated.
+
+If on, then an alpha channel is added if missing (all set to maximum opacity) and, if the starting palette index is 0, it is forced to black and will not be used by opaque pixels. The color 0 will be emitted for pixels whose alpha is less than 50%, even if the starting palette index is not 0.
+
+Interesting test cases:
+* Image with no alpha channel, alpha on
+* Image with no alpha channel, alpha off
+* Image with alpha channel, alpha on
+* Image with no alpha channel, alpha off
+
+Do all of the above with every image type (2bit, 4bit, 8bit, scan16).
+
+
+Starting index and number of colors
+-----------------------------------
+Starting index defaults to 0.
+
+Number of colors defaults to 0, which means to choose the maximum possible colors (e.g. 16 colors for 4-bit color).
+
+If the starting index is 0, the number of colors includes transparency, so if you want to generate a palette with 7 colors plus transparency, choose 8.
+
+
+Gracefulness
+------------
+Things to handle gracefully:
+* A non-wildcard filename was passed in, but that file does not exist
+* The directory specified in --out-dir does not exist

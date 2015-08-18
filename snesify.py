@@ -1,9 +1,13 @@
 #!/usr/bin/env python
 # Written for Python 3.4 with the pillow and scikit-image libraries
-# @TODO@ -- range check numeric command-line arguments
-# @TODO@ -- consider click instead of argparse
+# @TODO@:
+#   * range check numeric command-line arguments
+#   * consider click instead of argparse
+#   * error out if width or height is not a multiple of 8
+#   * check if the image already has fewer than N unique colors and not generate a new palette if so
 import argparse
 import cProfile as profile
+import io
 import os.path
 import platform
 import struct
@@ -15,6 +19,10 @@ import scipy.cluster.vq
 import skimage.color
 import skimage.exposure
 import skimage.io
+
+
+# NB: also update setup.py when changing
+__version__ = '0.0'
 
 
 FLOYD_STEINBERG = np.array([
@@ -42,17 +50,14 @@ ATKINSON = np.array([
 
 DITHER_FILTERS = {
     'fs': FLOYD_STEINBERG,
-    'f-s': FLOYD_STEINBERG,
-    'floyd-steinberg': FLOYD_STEINBERG,
     'jjn': JARVIS_JUDICE_NINKE,
-    'j-j-n': JARVIS_JUDICE_NINKE,
-    'jarvis-judice-ninke': JARVIS_JUDICE_NINKE,
     'stucki': STUCKI,
     'atkinson': ATKINSON,
 }
 
 
 # Use Lab instead of RGB
+# (@XXX@ -- doesn't work. Some code assumes numeric values are in the range [0..1])
 USE_LAB = False
 
 
@@ -60,17 +65,26 @@ def main(argv=None):
     if argv is None:
         argv = sys.argv[1:]
     options = parseArgs(argv)
+    if options.shared_palette:
+        if options.format == 'scan16':
+            print("--shared-palette cannot be used with scan16 format", file=sys.stderr)
+            return 1
+        palette = getSharedPalette(options)
+        with open(options.shared_palette, 'wb') as pal_file:
+            writePalette(palette, pal_file)
+    else:
+        palette = None
     for filename in options.files:
         if options.verbose:
             print(filename, end=' ', flush=True)
             start_time = time.perf_counter()
         runner = profile.runctx if options.profile else exec
-        runner("processFile(filename, options)", globals(), locals())
+        runner("processFile(filename, palette, options)", globals(), locals())
         if options.verbose:
             print("({:.2f} secs)".format(time.perf_counter() - start_time))
 
 
-def processFile(filename, options):
+def processFile(filename, palette, options):
     try:
         img = skimage.io.imread(filename)[:,:,:3]   # The slice will remove any alpha channel
     except (OSError, IOError) as e:
@@ -81,66 +95,102 @@ def processFile(filename, options):
     else:
         img = skimage.img_as_float(img)
         img = skimage.exposure.adjust_gamma(img, gamma=options.gamma_in)
-    chr_filename = changeExtension(filename, '.chr')
-    pal_filename = changeExtension(filename, '.pal')
+    chr_data, pal_data = processImage(img, palette, options)
+    chr_filename = genOutFilename(filename, options.out_dir, '.chr')
     with open(chr_filename, 'wb') as chr_file:
+        chr_file.write(chr_data.getbuffer())
+    if pal_data is not None:
+        pal_filename = genOutFilename(filename, options.out_dir, '.pal')
         with open(pal_filename, 'wb') as pal_file:
-            processImage(img, chr_file, pal_file, options)
+            pal_file.write(pal_data.getbuffer())
 
 
 def parseArgs(argv):
-    parser = argparse.ArgumentParser(argv)
-    parser.add_argument('files', nargs='+')
+    parser = argparse.ArgumentParser(
+        prog="snesify",
+        description="Converts graphics to SNES format",
+    )
+    parser.add_argument('files', nargs='*')
+    parser.add_argument('--version', action='version',
+                        version='%(prog)s ' + __version__)
     parser.add_argument('--verbose', '-v', action='count')
+    parser.add_argument('--out-dir')
+    parser.add_argument('--format', choices=('2bit', '4bit', '8bit', 'scan16'), default='4bit')
     parser.add_argument('--gamma-in', type=float, default=1.0)
     parser.add_argument('--gamma-out', type=float, default=1.0)
-    parser.add_argument('--seed', action='store_true')
+    parser.add_argument('--shared-palette')
+    #parser.add_argument('--starting-index', type=int, default=0)
+    #parser.add_argument('--num-colors', type=int, default=0)
     parser.add_argument('--dither', choices=DITHER_FILTERS.keys())
     parser.add_argument('--no-boustrophedon', action='store_true')
+    parser.add_argument('--seed', action='store_true')
     parser.add_argument('--window', type=int, default=0)
     parser.add_argument('--profile', action='store_true')
-    args = parser.parse_args()
+    options = parser.parse_args(argv)
     # @TODO@ -- some other non-Unix OSes may need this behavior
     # @TODO@ -- more elegant way to do this?
     if platform.system() == 'Windows':
         import glob
         filenames = []
-        for filename in args.files:
+        for filename in options.files:
+            # If we don't check for wildcards and just run everything through
+            # glob.glob, then nonexistent files will be silently ignored. We
+            # want to raise an error if the user tries to convert foo.png and
+            # foo.png does not exist.
             if '*' in filename or '?' in filename or '[' in filename:
                 filenames += glob.glob(filename)
             else:
                 filenames.append(filename)
-        args.files = filenames
-    args.diffusion_filter = DITHER_FILTERS[args.dither] if args.dither else None
-    args.boustrophedon = not args.no_boustrophedon
-    return args
+        options.files = filenames
+    options.num_bitplanes = {
+        '2bit': 2,
+        '4bit': 4,
+        '8bit': 8,
+        'scan16': 4,
+    }[options.format]
+    options.num_colors = 2**options.num_bitplanes
+    options.diffusion_filter = DITHER_FILTERS.get(options.dither, None)
+    options.boustrophedon = not options.no_boustrophedon
+    return options
 
 
-def changeExtension(filename, new_extension):
-    return os.path.splitext(filename)[0] + new_extension
+def genOutFilename(filename, out_path, new_extension):
+    if not out_path:
+        out_path = os.path.dirname(filename)
+    basename = os.path.basename(filename)
+    return out_path + '/' + os.path.splitext(basename)[0] + new_extension
 
 
 # img should be a 2D numpy array of pixels
 # (really a 3D array of color components)
-def processImage(img, chr_file, pal_file, options):
+def processImage(img, shared_palette, options):
+    chr_file = io.BytesIO()
+    pal_file = None if options.shared_palette else io.BytesIO()
     height, width, num_channels = img.shape
-    if options.seed:
-        estimated_palette = genPalette(img.reshape((width*height, num_channels)))
+    if shared_palette is not None:
+        palette = shared_palette
+    elif options.format != 'scan16' or options.seed:
+        palette = genPalette(img.reshape((width*height, num_channels)), options)
+        if options.format != 'scan16':
+            writePalette(palette, pal_file, options)
     else:
-        estimated_palette = None
+        assert options.format == 'scan16' and not options.seed
+        palette = None
     diffusion_filter = extendFilter(options.diffusion_filter, num_channels)
     for row_num in range(height//8):
         scanline_rows = []
         for i in range(8):
             scanline_num = row_num*8 + i
-            paletted_line, palette = processLine(img,
-                                                 scanline_num,
-                                                 estimated_palette,
-                                                 diffusion_filter,
-                                                 options)
-            writePalette(palette, pal_file, options)
+            paletted_line, line_palette = processLine(img,
+                                                      scanline_num,
+                                                      palette,
+                                                      diffusion_filter,
+                                                      options)
+            if options.format == 'scan16':
+                writePalette(line_palette, pal_file, options)
             scanline_rows.append(paletted_line)
-        writeChrRow(scanline_rows, chr_file)
+        writeChrRow(scanline_rows, chr_file, options)
+    return chr_file, pal_file
 
 # Reshape filter to number of channels
 # If there are 3 channels, [[a,b,c]] becomes [[[a,a,a],[b,b,b],[c,c,c]]]
@@ -153,11 +203,13 @@ def extendFilter(filter, num_channels):
 
 
 # NB: modifies img in-place to facilitate dithering
-def processLine(img, line_num, estimated_palette, diffusion_filter, options):
+# If format is scan16, palette is the seed palette if any, else None
+def processLine(img, line_num, palette, diffusion_filter, options):
     height, width, num_channels = img.shape
     line = img[line_num]
-    pal_window = getWindow(img, line_num, options)
-    palette = genPalette(pal_window, estimated_palette)
+    if options.format == 'scan16':
+        pal_window = getWindow(img, line_num, options)
+        palette = genPalette(pal_window, options, seed=palette)
     if diffusion_filter is not None:
         reversed = options.boustrophedon and line_num % 2 != 0
         if reversed:
@@ -186,13 +238,13 @@ def getWindow(img, line_num, options):
 
 # Use k-means to generate a 16-color palette
 # pixels should be a numpy array
-def genPalette(pixels, estimated_palette=None):
+def genPalette(pixels, options, seed=None):
     # Make sure all values are 0..1
     # @XXX@ -- not necessarily appropriate in non-RGB colorspaces
     pixels = pixels.clip(0.0, 1.0)
     centroids, _ = scipy.cluster.vq.kmeans(
         pixels,
-        estimated_palette if estimated_palette is not None else 16,
+        seed if seed is not None else options.num_colors,
         check_finite=False
     )
     # Sometimes fewer than 16 colors are in the list and we have to resize to compensate
@@ -239,12 +291,12 @@ def scaleColors(palette, max):
     return [[int(x*max + 0.5) for x in color] for color in palette]
 
 
-def writeChrRow(scanline_rows, chr_file):
+def writeChrRow(scanline_rows, chr_file, options):
     width = len(scanline_rows[0])
     for chr_num in range(width//8):
         chr_x = chr_num*8
-        for shift in (0, 2):
-            shift2 = shift + 1              # shift for bitplane 2
+        for shift in range(0, options.num_bitplanes, 2):
+            shift2 = shift + 1              # shift for second bitplane in pair
             bitplane_mask = 1 << shift
             bitplane2_mask = 1 << shift2
             for y in range(8):
