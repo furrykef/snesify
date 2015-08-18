@@ -1,8 +1,8 @@
 @PATH=C:\MFS\cc65\bin;%PATH%
-ca65 -l scan16-listing.txt scan16.asm
+ca65 -l demo-listing.txt demo.asm
 @if errorlevel 1 goto end
-ld65 -C scan16.cfg -o scan16.smc scan16.o
+ld65 -C demo.cfg -o demo.smc demo.o
 @if errorlevel 1 go to end
-fix-checksum.py scan16.smc scan16.smc
+fix-checksum.py demo.smc demo.smc
 :end
 @pause
