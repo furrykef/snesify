@@ -247,8 +247,8 @@ def genPalette(pixels, options, seed=None):
         seed if seed is not None else options.num_colors,
         check_finite=False
     )
-    # Sometimes fewer than 16 colors are in the list and we have to resize to compensate
-    return np.resize(centroids, (16, centroids.shape[1]))
+    # Sometimes not enough colors are in the list and we have to resize to compensate
+    return np.resize(centroids, (options.num_colors, centroids.shape[1]))
 
 
 def addDiffusedError(img, diffused_error, row, col):

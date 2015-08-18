@@ -1,0 +1,15 @@
+Metadata-Version: 1.1
+Name: snesify
+Version: 0.0
+Summary: Converts graphics to SNES format
+Home-page: http://github.com/furrykef/snesify
+Author: Kef Schecter
+Author-email: furrykef@gmail.com
+License: MIT
+Description: UNKNOWN
+Platform: UNKNOWN
+Classifier: Development Status :: 3 - Alpha
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3.4
+Classifier: Topic :: Multimedia :: Graphics
+Classifier: Topic :: Utilities

@@ -13,7 +13,7 @@ HIRQ_TIME = 201
 .segment "LOHALF"
 
 ChrData:
-        .incbin "lenna.chr"
+        .incbin "images/scan16/lenna.chr"
 ChrDataSize = * - ChrData
 
 
@@ -29,7 +29,7 @@ NameDataSize = * - NameData
 .segment "CODE"
 
 PaletteData:
-        .incbin "lenna.pal"
+        .incbin "images/scan16/lenna.pal"
 
 
 Main:

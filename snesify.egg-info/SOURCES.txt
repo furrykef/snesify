@@ -1,0 +1,6 @@
+snesify.py
+snesify.egg-info/PKG-INFO
+snesify.egg-info/SOURCES.txt
+snesify.egg-info/dependency_links.txt
+snesify.egg-info/entry_points.txt
+snesify.egg-info/top_level.txt
