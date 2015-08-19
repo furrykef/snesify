@@ -15,7 +15,7 @@ BUTTON_UP       = 1 << 11
 
 
 ; Order is significant!
-.enum ImgFormat
+.enum ImageFormat
         _2bit
         _4bit
         _8bit
@@ -33,7 +33,7 @@ wImageId:       .res 2
 pImageInfo:
 pImageInfoL:    .res 1
 pImageInfoH:    .res 1
-bImageFmt:      .res 1
+bImageFormat:   .res 1
 
 lpPalette:
 lpPaletteL:     .res 1
@@ -55,34 +55,34 @@ Images:
 NUM_IMAGES = (* - Images) / 2
 
 Lenna2Info:
-        .byte       ImgFormat::_2bit
+        .byte       ImageFormat::_2bit
         .faraddr    Lenna2Chr
         .word       Lenna2ChrSize
         .faraddr    Lenna2Pal
         .word       Lenna2PalSize
 
 Lenna4Info:
-        .byte       ImgFormat::_4bit
+        .byte       ImageFormat::_4bit
         .faraddr    Lenna4Chr
         .word       Lenna4ChrSize
         .faraddr    Lenna4Pal
         .word       Lenna4PalSize
 
 Lenna8Info:
-        .byte       ImgFormat::_8bit
+        .byte       ImageFormat::_8bit
         .faraddr    Lenna8Chr
         .word       Lenna8ChrSize
         .faraddr    Lenna8Pal
         .word       Lenna8PalSize
 
 LennaScan16Info:
-        .byte       ImgFormat::scan16
+        .byte       ImageFormat::scan16
         .faraddr    LennaScan16Chr
         .word       LennaScan16ChrSize
         .faraddr    LennaScan16Pal
         .word       LennaScan16PalSize
 
-; These must be in the same order as ImgFormat
+; These must be in the same order as ImageFormat
 ; This is the BGMODE for each format
 FmtVideoMode:
         .byte   0                           ; 2bit
@@ -260,7 +260,7 @@ Main:
         ; Get image format
         ldy     #0
         lda     (pImageInfo),y
-        sta     bImageFmt
+        sta     bImageFormat
         iny
 
         ; Get BG mode
@@ -315,8 +315,8 @@ Main:
         stz     CGADD
 
         ; How we handle the palette depends on the format
-        lda     bImageFmt
-        cmp     #ImgFormat::scan16
+        lda     bImageFormat
+        cmp     #ImageFormat::scan16
         beq     @scan16
 
         ; Not Scan16 format; load palette now
@@ -392,8 +392,8 @@ HandleVblankImpl:
         sta     wJoyKeyDown
 
         ; Enable HV-IRQ if image format is scan16
-        lda     bImageFmt
-        cmp     #ImgFormat::scan16
+        lda     bImageFormat
+        cmp     #ImageFormat::scan16
         bne     @end
         lda     #$31                        ; NMI off, IRQ on, auto-read
         sta     NMITIMEN
