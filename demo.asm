@@ -50,8 +50,8 @@ wPaletteSizeH:  .res 1
 Images:
         .addr   Lenna2Info
         .addr   Lenna4Info
-        .addr   Lenna8Info
         .addr   LennaScan16Info
+        .addr   Lenna8Info
 NUM_IMAGES = (* - Images) / 2
 
 Lenna2Info:
@@ -142,8 +142,6 @@ Main:
         stx     wJoyState
         stx     wPrevJoyState
         stx     wJoyKeyDown
-        ;stx     wImageId
-        ldx     #3
         stx     wImageId
 
         ; Force blank
@@ -212,8 +210,6 @@ Main:
         stx     HTIMEL
         ldx     #0                          ; Don't run IRQ until vblank has ended
         stx     VTIMEL
-        lda     #$81                        ; NMI only and auto-read
-        sta     NMITIMEN
         bra     @change_image
 
 @main_loop:
@@ -242,6 +238,10 @@ Main:
         sta     wImageId
 @change_image:
         ; Load new image
+        SetM8
+        stz     NMITIMEN                    ; interrupts disabled
+
+        ; Get image info
         SetM16
         lda     wImageId
         asl                                 ; entries are 16-bit
@@ -253,13 +253,12 @@ Main:
         lda     Images,x
         sta     pImageInfoH
 
-        ldy     #0
-
         ; Force blank
         lda     #$80
         sta     INIDISP
 
         ; Get image format
+        ldy     #0
         lda     (pImageInfo),y
         sta     bImageFmt
         iny
@@ -345,6 +344,10 @@ Main:
         lda     #$0f
         sta     INIDISP
 
+        ; Enable vblank
+        lda     #$81                        ; NMI only and auto-read
+        sta     NMITIMEN
+
         ; Done
         jmp     @main_loop
 
@@ -392,7 +395,7 @@ HandleVblankImpl:
         lda     bImageFmt
         cmp     #ImgFormat::scan16
         bne     @end
-        lda     #$31
+        lda     #$31                        ; NMI off, IRQ on, auto-read
         sta     NMITIMEN
 
 @end:
