@@ -231,9 +231,9 @@ Main:
         bra     @main_loop
 @left:
         dec     wImageId
-        bpl     @main_loop
+        bpl     @change_image
         stz     wImageId                    ; overflowed to -1; restore to 0
-        bra     @change_image
+        bra     @main_loop
 @right:
         lda     wImageId
         cmp     #NUM_IMAGES - 1
