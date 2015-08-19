@@ -7,7 +7,88 @@
 HIRQ_TIME = 201
 
 
+; Joypad bit numbers
+BUTTON_RIGHT    = 1 << 8
+BUTTON_LEFT     = 1 << 9
+BUTTON_DOWN     = 1 << 10
+BUTTON_UP       = 1 << 11
+
+
+; Order is significant!
+.enum ImgFormat
+        _2bit
+        _4bit
+        _8bit
+        scan16
+.endenum
+
+
 .segment "ZEROPAGE"
+
+wFrameCounter:  .res 2
+wJoyState:      .res 2
+wPrevJoyState:  .res 2
+wJoyKeyDown:    .res 2
+wImageId:       .res 2
+pImageInfo:
+pImageInfoL:    .res 1
+pImageInfoH:    .res 1
+bImageFmt:      .res 1
+
+lpPalette:
+lpPaletteL:     .res 1
+lpPaletteH:     .res 1
+lpPaletteB:     .res 1
+wPaletteSize:
+wPaletteSizeL:  .res 1
+wPaletteSizeH:  .res 1
+
+
+.segment "CODE"
+
+; This is in the CODE segment so we can use near pointers
+Images:
+        .addr   Lenna2Info
+        .addr   Lenna4Info
+        .addr   Lenna8Info
+        .addr   LennaScan16Info
+NUM_IMAGES = (* - Images) / 2
+
+Lenna2Info:
+        .byte       ImgFormat::_2bit
+        .faraddr    Lenna2Chr
+        .word       Lenna2ChrSize
+        .faraddr    Lenna2Pal
+        .word       Lenna2PalSize
+
+Lenna4Info:
+        .byte       ImgFormat::_4bit
+        .faraddr    Lenna4Chr
+        .word       Lenna4ChrSize
+        .faraddr    Lenna4Pal
+        .word       Lenna4PalSize
+
+Lenna8Info:
+        .byte       ImgFormat::_8bit
+        .faraddr    Lenna8Chr
+        .word       Lenna8ChrSize
+        .faraddr    Lenna8Pal
+        .word       Lenna8PalSize
+
+LennaScan16Info:
+        .byte       ImgFormat::scan16
+        .faraddr    LennaScan16Chr
+        .word       LennaScan16ChrSize
+        .faraddr    LennaScan16Pal
+        .word       LennaScan16PalSize
+
+; These must be in the same order as ImgFormat
+; This is the BGMODE for each format
+FmtVideoMode:
+        .byte   0                           ; 2bit
+        .byte   1                           ; 4bit
+        .byte   4                           ; 8bit
+        .byte   1                           ; scan16
 
 
 .segment "LOHALF"
@@ -17,13 +98,14 @@ HIRQ_TIME = 201
 .ident(.concat(name, "Size")) = * - .ident(name)
 .endmacro
 
-BinData "LennaScan16Chr", "images/scan16/lenna.chr"
 
 NameData:
         .repeat 32*32, I
             .word I
         .endrepeat
 NameDataSize = * - NameData
+
+BinData "LennaScan16Chr", "images/scan16/lenna.chr"
 
 
 .segment "BANK1"
@@ -54,13 +136,19 @@ Main:
         lda     #$01
         sta     MEMSEL
 
+        ; Init vars
+        ldx     #0
+        stx     wFrameCounter
+        stx     wJoyState
+        stx     wPrevJoyState
+        stx     wJoyKeyDown
+        ;stx     wImageId
+        ldx     #3
+        stx     wImageId
+
         ; Force blank
         lda     #$80
         sta     INIDISP
-
-        ; Set video mode 1
-        lda     #$01
-        sta     BGMODE
 
         ; Set BG1 name table address
         stz     BG1SC                       ; $0000
@@ -74,36 +162,19 @@ Main:
         sta     TM
 
 
-        ; Prepare DMA for chr data transfer
-        ; *********************************
+        ; Prepare DMA channels
+        ; Channel 1 will be used for VRAM transfers
+        ; Channel 2 will be used for general CGRAM transfers
+        ; Channel 7 will be used for CGRAM transfers during hblank for scan16 graphics
         lda     #$01                        ; 16-bit xfer to single register, incrementing
         sta     DMAP0
-
-        ; DMA source address
-        ldx     #.loword(LennaScan16Chr)
-        stx     A1T0L
-        lda     #^LennaScan16Chr
-        sta     A1B0
-
-        ; DMA destination register
+        stz     DMAP1                       ; 8-bit xfer to single register, incrementing
         lda     #<VMDATAL
         sta     BBAD0
+        lda     #<CGDATA
+        sta     BBAD1
 
-        ; DMA size
-        ldx     #LennaScan16ChrSize
-        stx     DAS0L
-
-        ; Set VRAM destination address
-        ldx     #$1000
-        stx     VMADDL
-
-        ; Execute DMA
-        lda     #$01
-        sta     MDMAEN
-
-
-        ; Prepare DMA for tilemap transfer
-        ; ********************************
+        ; Prepare DMA for namedata transfer
         ; (here we're reusing a couple regs from the chr data transfer)
         ; DMA source address
         ldx     #.loword(NameData)
@@ -125,33 +196,159 @@ Main:
 
 
         ; Prepare DMA for palette transfer
-        ; ********************************
-        ; (we won't transfer right away; we'll do it during vblank and hblank)
-        stz     DMAP0                       ; 8-bit xfer to single register, incrementing
+        ; (we won't transfer right away; we'll do it during hblank)
+        stz     DMAP7                       ; 8-bit xfer to single register, incrementing
 
         ; DMA source bank
         lda     #^LennaScan16Pal            ; not auto-updated during DMA
-        sta     A1B0
+        sta     A1B7
 
         ; DMA destination register
         lda     #<CGDATA
-        sta     BBAD0
+        sta     BBAD7
 
-        ; End force blank
-        lda     #$0f
-        sta     INIDISP
-
-        ; Set up IRQ
+        ; Set up IRQ (but don't enable it yet)
         ldx     #HIRQ_TIME
         stx     HTIMEL
         ldx     #0                          ; Don't run IRQ until vblank has ended
         stx     VTIMEL
-        lda     #$80                        ; NMI only for now
+        lda     #$81                        ; NMI only and auto-read
         sta     NMITIMEN
+        bra     @change_image
 
-forever:
+@main_loop:
+        SetM16
+        lda     wFrameCounter
+@wait_for_vblank:
         wai
-        bra     forever
+        cmp     wFrameCounter
+        beq     @wait_for_vblank
+        lda     wJoyKeyDown
+        bit     #BUTTON_LEFT
+        bne     @left
+        bit     #BUTTON_RIGHT
+        bne     @right
+        bra     @main_loop
+@left:
+        dec     wImageId
+        bpl     @main_loop
+        stz     wImageId                    ; overflowed to -1; restore to 0
+        bra     @change_image
+@right:
+        lda     wImageId
+        cmp     #NUM_IMAGES - 1
+        beq     @main_loop
+        inc     a
+        sta     wImageId
+@change_image:
+        ; Load new image
+        SetM16
+        lda     wImageId
+        asl                                 ; entries are 16-bit
+        tax
+        SetM8
+        lda     Images,x
+        sta     pImageInfoL
+        inx
+        lda     Images,x
+        sta     pImageInfoH
+
+        ldy     #0
+
+        ; Force blank
+        lda     #$80
+        sta     INIDISP
+
+        ; Get image format
+        lda     (pImageInfo),y
+        sta     bImageFmt
+        iny
+
+        ; Get BG mode
+        tax
+        lda     FmtVideoMode,x
+        sta     BGMODE
+
+        ; DMA 0 will be the chr data
+        ; chr source address
+        lda     (pImageInfo),y
+        sta     A1T0L
+        iny
+        lda     (pImageInfo),y
+        sta     A1T0H
+        iny
+        lda     (pImageInfo),y
+        sta     A1B0
+        iny
+
+        ; chr size
+        lda     (pImageInfo),y
+        sta     DAS0L
+        iny
+        lda     (pImageInfo),y
+        sta     DAS0H
+        iny
+
+        ; Set VRAM destination address
+        ldx     #$1000
+        stx     VMADDL
+
+        ; palette source address
+        lda     (pImageInfo),y
+        sta     lpPaletteL
+        iny
+        lda     (pImageInfo),y
+        sta     lpPaletteH
+        iny
+        lda     (pImageInfo),y
+        sta     lpPaletteB
+        iny
+
+        ; palette size
+        lda     (pImageInfo),y
+        sta     wPaletteSizeL
+        iny
+        lda     (pImageInfo),y
+        sta     wPaletteSizeH
+        iny
+
+        ; Set CGRAM destination address
+        stz     CGADD
+
+        ; How we handle the palette depends on the format
+        lda     bImageFmt
+        cmp     #ImgFormat::scan16
+        beq     @scan16
+
+        ; Not Scan16 format; load palette now
+        ; DMA 1 will be the palette data
+        ldx     lpPalette
+        stx     A1T1L
+        lda     lpPaletteB
+        sta     A1B1
+        ldx     wPaletteSize
+        stx     DAS1L
+
+        ; Execute DMA on channels 1 and 2
+        lda     #$03
+        sta     MDMAEN
+        bra     @end
+
+        ; Scan16 format; load palette later
+@scan16:
+        ; Execute DMA on channel 1
+        lda     #$01
+        sta     MDMAEN
+
+@end:
+        ; End force blank
+        lda     #$0f
+        sta     INIDISP
+
+        ; Done
+        jmp     @main_loop
+
+.a8
 
 
 HandleVblank:
@@ -160,27 +357,52 @@ HandleVblank:
         jml     HandleVblankImpl
 
 HandleVblankImpl:
-        SetM16
+        SetMXY16
         pha
 
+        inc     wFrameCounter
+
         ; DMA source address
+        ; @XXX@ -- should depend on image
         lda     #.loword(LennaScan16Pal)
-        sta     A1T0L
+        sta     A1T7L
 
         ; Reset CGRAM address for IRQ DMA
         SetM8
         stz     CGADD
 
-        ; Enable HV-IRQ
-        lda     #$30
+        ; Get controller state
+        ; First wait until bit 1 of HVBJOY is clear
+@not_ready:
+        lda     HVBJOY
+        bit     #$01
+        bne     @not_ready
+
+        ; Now read the state
+        SetM16
+        lda     wJoyState
+        sta     wPrevJoyState
+        lda     JOY1L
+        sta     wJoyState
+        eor     wPrevJoyState
+        and     wJoyState
+        sta     wJoyKeyDown
+
+        ; Enable HV-IRQ if image format is scan16
+        lda     bImageFmt
+        cmp     #ImgFormat::scan16
+        bne     @end
+        lda     #$31
         sta     NMITIMEN
 
-        SetM16
+@end:
         pla
         rti
 .a8
 
 
+; This implements scan16 rendering
+;
 ; Use BSNES debugger to time this function up to the STA MDMAEN instruction.
 ; The H register in BSNES is the number of master cycles taken for the current
 ; scanline. hblank begins at H=1096 (according to CPU::mmio_r4212 in higan
@@ -215,14 +437,14 @@ HandleIrqImpl:
 
         ; DMA size
         lda     #32                         ; 16-color palettes are 32 bytes
-        sta     DAS0L
+        sta     DAS7L
 
         ; Write to CGRAM address 0
         SetM8
         stz     CGADD
 
         ; Execute DMA
-        lda     #$01
+        lda     #$80
         sta     MDMAEN
 
         ; Disable V-IRQ and enable NMI
@@ -230,7 +452,7 @@ HandleIrqImpl:
         ; NB: Make sure if NMI fires during IRQ, it happens *after* this line!
         ; Yet we want to do it after the DMA because, if we enable it too soon,
         ; it can cause the NMI to fire a second time during vblank.
-        lda     #$90
+        lda     #$91
         sta     NMITIMEN
 
         ; Clear IRQ line

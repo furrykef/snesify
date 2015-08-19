@@ -1,5 +1,7 @@
 .p816
 .smart
+.macpack generic
+.feature force_range
 
 FLAG_XY8 = $10
 FLAG_M8 = $20
@@ -18,6 +20,10 @@ FLAG_M8 = $20
 
 .macro SetXY16
     rep #FLAG_XY8
+.endmacro
+
+.macro SetMXY16
+    rep #FLAG_M8 | FLAG_XY8
 .endmacro
 
 
