@@ -152,13 +152,13 @@ def parseArgs(argv):
             else:
                 filenames.append(filename)
         options.files = filenames
-    options.num_bitplanes = {
+    options.bpp = {
         '2bit': 2,
         '4bit': 4,
         '8bit': 8,
         'scan16': 4,
     }[options.format]
-    options.num_colors = 2**options.num_bitplanes
+    options.num_colors = 2**options.bpp
     options.diffusion_filter = DITHER_FILTERS.get(options.dither, None)
     options.boustrophedon = not options.no_boustrophedon
     return options
@@ -182,7 +182,12 @@ def processImage(img, shared_palette, options):
     if shared_palette is not None:
         palette = shared_palette
     elif options.format != 'scan16' or options.seed:
-        palette, _ = genPalette(img.reshape((width*height, num_channels)), options)
+        pixels = img.reshape((width*height, num_channels))
+        if options.seed:
+            seed = genPaletteMedianCut(pixels, options.bpp)
+        else:
+            seed = None
+        palette, _ = genPaletteKmeans(pixels, options, seed=seed)
         if options.format != 'scan16':
             writePalette(palette, pal_file, options)
     else:
@@ -221,7 +226,7 @@ def processLine(img, line_num, palette, diffusion_filter, options):
     line = img[line_num]
     if options.format == 'scan16':
         pal_window = getWindow(img, line_num, options)
-        palette, _ = genPalette(pal_window, options, seed=palette)
+        palette, _ = genPaletteKmeans(pal_window, options, seed=palette)
     if diffusion_filter is not None:
         reversed = options.boustrophedon and line_num % 2 != 0
         if reversed:
@@ -248,9 +253,9 @@ def getWindow(img, line_num, options):
     pal_num_rows = pal_end_line_num - pal_first_line_num
     return img[pal_first_line_num:pal_end_line_num].reshape((width*pal_num_rows, num_channels))
 
-# Use k-means to generate a 16-color palette
+# Use k-means to generate a palette
 # pixels should be a numpy array
-def genPalette(pixels, options, seed=None):
+def genPaletteKmeans(pixels, options, seed=None):
     # Make sure all values are 0..1
     # @XXX@ -- not necessarily appropriate in non-RGB colorspaces
     pixels = pixels.clip(0.0, 1.0)
@@ -268,6 +273,29 @@ def genPalette(pixels, options, seed=None):
     # @XXX@ -- not necessarily appropriate in non-RGB colorspaces
     centroids = centroids.clip(0.0, 1.0)
     return centroids, labels
+
+
+# Use median cut to generate a 16-color palette
+# Used to generate a seed palette for k-means
+# pixels should be a numpy array
+def genPaletteMedianCut(pixels, bpp):
+    return np.array(getMedianCut(pixels, bpp))
+
+# Return value is list, not array!
+def getMedianCut(pixels, depth):
+    if depth == 0:
+        return [np.mean(pixels, axis=0)]
+    channel_num = findChannelWithGreatestRange(pixels)
+    sorted_pixels = np.array(sorted(pixels, key=lambda pixel: pixel[channel_num]))
+    median = len(sorted_pixels)//2
+    lesser = sorted_pixels[:median]
+    greater = sorted_pixels[median:]
+    return getMedianCut(lesser, depth - 1) + getMedianCut(greater, depth - 1)
+
+def findChannelWithGreatestRange(pixels):
+    _, num_channels = pixels.shape
+    channel_ranges = [max(pixels[:,i]) - min(pixels[:,i]) for i in range(num_channels)]
+    return channel_ranges.index(max(channel_ranges))
 
 
 def addDiffusedError(img, diffused_error, row, col):
@@ -314,7 +342,7 @@ def writeChrRow(scanline_rows, chr_file, options):
     width = len(scanline_rows[0])
     for chr_num in range(width//8):
         chr_x = chr_num*8
-        for shift in range(0, options.num_bitplanes, 2):
+        for shift in range(0, options.bpp, 2):
             shift2 = shift + 1              # shift for second bitplane in pair
             bitplane_mask = 1 << shift
             bitplane2_mask = 1 << shift2
