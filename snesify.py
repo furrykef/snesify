@@ -12,7 +12,7 @@
 #   * range check numeric command-line arguments
 #   * consider click instead of argparse
 #   * error out if width or height is not a multiple of 8
-#   * check if the image already has fewer than N unique colors and not generate a new palette if so
+#   * check if the image or line already has fewer than N unique colors and not generate a new palette if so
 #   * parallel scikit-learn k-means is known to sometimes be broken on OS X
 import argparse
 import cProfile as profile
@@ -128,6 +128,7 @@ def parseArgs(argv):
     parser.add_argument('--format', '-f', choices=('2bit', '4bit', '8bit', 'scan16'), default='4bit')
     parser.add_argument('--gamma-in', type=float, default=1.0)
     parser.add_argument('--gamma-out', type=float, default=1.0)
+    parser.add_argument('--mini-batch', action='store_true')
     parser.add_argument('--shared-palette')
     #parser.add_argument('--starting-index', type=int, default=0)
     #parser.add_argument('--num-colors', type=int, default=0)
@@ -259,19 +260,17 @@ def genPaletteKmeans(pixels, options, seed=None):
     # Make sure all values are 0..1
     # @XXX@ -- not necessarily appropriate in non-RGB colorspaces
     pixels = pixels.clip(0.0, 1.0)
-    # We could use n_jobs=-1 to use all available CPUs during k-means++
-    # But we don't, because it takes forever on my PC when doing scan16.
-    # It's also known to be broken on OS X when numpy uses the Accelerate Framework.
-    centroids, labels, *_ = sklearn.cluster.k_means(
-        pixels,
-        options.num_colors,
-        init=seed if seed is not None else 'k-means++',
-        n_init=1 if seed is not None else 10,
-        #max_iter=1,
-        #n_jobs=-1                           # use all available CPUs for k-means++
-    )
-    # @XXX@ -- not necessarily appropriate in non-RGB colorspaces
-    centroids = centroids.clip(0.0, 1.0)
+    if options.mini_batch:
+        KMeans = sklearn.cluster.MiniBatchKMeans
+    else:
+        KMeans = sklearn.cluster.KMeans
+    kmeans = KMeans(n_clusters=options.num_colors,
+                    init=seed if seed is not None else 'k-means++',
+                    n_init=1 if seed is not None else 10)
+    kmeans.fit(pixels)
+    # @XXX@ -- clipping not necessarily appropriate in non-RGB colorspaces
+    centroids = kmeans.cluster_centers_.clip(0.0, 1.0)
+    labels = kmeans.labels_
     return centroids, labels
 
 

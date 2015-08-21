@@ -1,6 +1,15 @@
 These are just my notes to myself. Pay no mind.
 
 
+Defaults
+--------
+I'm thinking these might be sensible defaults:
+* 2bit: vanilla unseeded k-means
+* 4bit: vanilla seeded k-means
+* scan16: mini-batch seeded k-means
+* 8bit: median-cut
+
+
 Gamma
 -----
 NB: the Lenna test image is not gamma-corrected. It should have an input gamma of 1.0.
