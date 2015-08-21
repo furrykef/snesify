@@ -22,3 +22,8 @@ http://bisqwit.iki.fi/story/howto/dither/jy/ (Knoll-Yliluoma)
 Color space
 -----------
 Using the Lab color space during the conversion may yield better results than using RGB, since Euclidean distance is supposed to line up better with human perception in that color space.
+
+
+A crazy idea for a scan16 variant
+---------------------------------
+16 colors per scanline, but using 2bpp with 4 palettes. This halves the size of the chr data, though the namedata (1.75 KB) has to be transferred for every frame. This would allow larger animations or higher frame rates than standard scan16 at the expense of image quality.

@@ -1,10 +1,19 @@
 #!/usr/bin/env python
-# Written for Python 3.4 with the pillow and scikit-image libraries
+# Written for Python 3.4
+#
+# Dependencies
+#   pillow
+#   scikit-image
+#   scikit-learn
+#   ...and their dependencies
+#
 # @TODO@:
+#   * implement shared palette
 #   * range check numeric command-line arguments
 #   * consider click instead of argparse
 #   * error out if width or height is not a multiple of 8
 #   * check if the image already has fewer than N unique colors and not generate a new palette if so
+#   * parallel scikit-learn k-means is known to sometimes be broken on OS X
 import argparse
 import cProfile as profile
 import io
@@ -19,6 +28,7 @@ import scipy.cluster.vq
 import skimage.color
 import skimage.exposure
 import skimage.io
+import sklearn.cluster
 
 
 # NB: also update setup.py when changing
@@ -115,7 +125,7 @@ def parseArgs(argv):
                         version='%(prog)s ' + __version__)
     parser.add_argument('--verbose', '-v', action='count')
     parser.add_argument('--out-dir')
-    parser.add_argument('--format', choices=('2bit', '4bit', '8bit', 'scan16'), default='4bit')
+    parser.add_argument('--format', '-f', choices=('2bit', '4bit', '8bit', 'scan16'), default='4bit')
     parser.add_argument('--gamma-in', type=float, default=1.0)
     parser.add_argument('--gamma-out', type=float, default=1.0)
     parser.add_argument('--shared-palette')
@@ -157,6 +167,8 @@ def parseArgs(argv):
 def genOutFilename(filename, out_path, new_extension):
     if not out_path:
         out_path = os.path.dirname(filename)
+        if not out_path:
+            out_path = '.'
     basename = os.path.basename(filename)
     return out_path + '/' + os.path.splitext(basename)[0] + new_extension
 
@@ -170,7 +182,7 @@ def processImage(img, shared_palette, options):
     if shared_palette is not None:
         palette = shared_palette
     elif options.format != 'scan16' or options.seed:
-        palette = genPalette(img.reshape((width*height, num_channels)), options)
+        palette, _ = genPalette(img.reshape((width*height, num_channels)), options)
         if options.format != 'scan16':
             writePalette(palette, pal_file, options)
     else:
@@ -209,7 +221,7 @@ def processLine(img, line_num, palette, diffusion_filter, options):
     line = img[line_num]
     if options.format == 'scan16':
         pal_window = getWindow(img, line_num, options)
-        palette = genPalette(pal_window, options, seed=palette)
+        palette, _ = genPalette(pal_window, options, seed=palette)
     if diffusion_filter is not None:
         reversed = options.boustrophedon and line_num % 2 != 0
         if reversed:
@@ -242,13 +254,20 @@ def genPalette(pixels, options, seed=None):
     # Make sure all values are 0..1
     # @XXX@ -- not necessarily appropriate in non-RGB colorspaces
     pixels = pixels.clip(0.0, 1.0)
-    centroids, _ = scipy.cluster.vq.kmeans(
+    # We could use n_jobs=-1 to use all available CPUs during k-means++
+    # But we don't, because it takes forever on my PC when doing scan16.
+    # It's also known to be broken on OS X when numpy uses the Accelerate Framework.
+    centroids, labels, *_ = sklearn.cluster.k_means(
         pixels,
-        seed if seed is not None else options.num_colors,
-        check_finite=False
+        options.num_colors,
+        init=seed if seed is not None else 'k-means++',
+        n_init=1 if seed is not None else 10,
+        #max_iter=1,
+        #n_jobs=-1                           # use all available CPUs for k-means++
     )
-    # Sometimes not enough colors are in the list and we have to resize to compensate
-    return np.resize(centroids, (options.num_colors, centroids.shape[1]))
+    # @XXX@ -- not necessarily appropriate in non-RGB colorspaces
+    centroids = centroids.clip(0.0, 1.0)
+    return centroids, labels
 
 
 def addDiffusedError(img, diffused_error, row, col):
