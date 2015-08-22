@@ -4,7 +4,7 @@
 
 ; This value depends on how long HandleIrq takes to get to the DMA
 ; See the big comment at HandleIrq
-HIRQ_TIME = 201
+HIRQ_TIME = 196
 
 
 ; Joypad bit numbers
@@ -404,17 +404,18 @@ HandleVblankImpl:
 .a8
 
 
-; This implements scan16 rendering
+; This implements scan16 rendering.
 ;
-; Use BSNES debugger to time this function up to the STA MDMAEN instruction.
-; The H register in BSNES is the number of master cycles taken for the current
-; scanline. hblank begins at H=1096 (according to CPU::mmio_r4212 in higan
-; source), so you want the DMA to begin then. I *think* the DMA will begin at
-; 24 master cycles after the STA MDAEN instruction completes (16 cycles DMA
-; overhead + 8 cycles for 1 DMA channel). So after executing STA MDMAEN, BSNES
-; should say H=1072 (it's OK to overshoot by a few cycles, but don't go under).
-; H will not be the same on every scanline, so be sure to check the value for
-; several iterations.
+; Use BSNES debugger to time this function up to the instruction after the
+; STA MDMAEN instruction. The H register in BSNES is the number of master cycles
+; taken for the current scanline. hblank begins at H=1096 (according to
+; CPU::mmio_r4212 in higan source), so you want the DMA to begin then. I *think*
+; the DMA will begin at 24 master cycles after the STA MDAEN instruction
+; completes (16 cycles DMA overhead + 8 cycles for 1 DMA channel). So after
+; executing STA MDMAEN, BSNES should say H=1072 (it's OK to overshoot by a few
+; cycles, but don't go under). H will not be the same on every scanline, so be
+; sure to check the value for several iterations. You can also get different
+; numbers on different frames, so check multiple frames, too.
 ;
 ; To control when this function is called, tweak HIRQ_TIME at the top of this
 ; program. If the STA MDMAEN instruction finishes too early, increase the value;
