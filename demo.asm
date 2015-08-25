@@ -28,7 +28,6 @@ BUTTON_UP       = 1 << 11
 wFrameCounter:  .res 2
 wJoyState:      .res 2
 wPrevJoyState:  .res 2
-wJoyKeyDown:    .res 2
 wImageId:       .res 2
 pImageInfo:
 pImageInfoL:    .res 1
@@ -141,7 +140,6 @@ Main:
         stx     wFrameCounter
         stx     wJoyState
         stx     wPrevJoyState
-        stx     wJoyKeyDown
         stx     wImageId
 
         ; Force blank
@@ -219,7 +217,25 @@ Main:
         wai
         cmp     wFrameCounter
         beq     @wait_for_vblank
-        lda     wJoyKeyDown
+
+        ; Get controller state
+        ; First wait until bit 1 of HVBJOY is clear
+        SetM8
+@joy_not_ready:
+        lda     HVBJOY
+        bit     #$01
+        bne     @joy_not_ready
+
+        ; Now read the state
+        SetM16
+        lda     wJoyState
+        sta     wPrevJoyState
+        lda     JOY1L
+        sta     wJoyState
+        eor     wPrevJoyState               ; get buttons that have changed
+        and     wJoyState                   ; filter out buttons that are not currently pressed
+
+        ; A now contains the buttons that have just been pressed
         bit     #BUTTON_LEFT
         bne     @left
         bit     #BUTTON_RIGHT
@@ -360,7 +376,7 @@ HandleVblank:
         jml     HandleVblankImpl
 
 HandleVblankImpl:
-        SetMXY16
+        SetM16
         pha
 
         inc     wFrameCounter
@@ -374,23 +390,6 @@ HandleVblankImpl:
         SetM8
         stz     CGADD
 
-        ; Get controller state
-        ; First wait until bit 1 of HVBJOY is clear
-@not_ready:
-        lda     HVBJOY
-        bit     #$01
-        bne     @not_ready
-
-        ; Now read the state
-        SetM16
-        lda     wJoyState
-        sta     wPrevJoyState
-        lda     JOY1L
-        sta     wJoyState
-        eor     wPrevJoyState
-        and     wJoyState
-        sta     wJoyKeyDown
-
         ; Enable HV-IRQ if image format is scan16
         lda     bImageFormat
         cmp     #ImageFormat::scan16
@@ -399,6 +398,7 @@ HandleVblankImpl:
         sta     NMITIMEN
 
 @end:
+        SetM16
         pla
         rti
 .a8
