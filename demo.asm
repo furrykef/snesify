@@ -262,14 +262,11 @@ Main:
         lda     wImageId
         asl                                 ; entries are 16-bit
         tax
-        SetM8
         lda     Images,x
-        sta     pImageInfoL
-        inx
-        lda     Images,x
-        sta     pImageInfoH
+        sta     pImageInfo
 
         ; Force blank
+        SetM8
         lda     #$80
         sta     INIDISP
 
@@ -280,6 +277,7 @@ Main:
         iny
 
         ; Get BG mode
+        ClearB
         tax
         lda     FmtVideoMode,x
         sta     BGMODE

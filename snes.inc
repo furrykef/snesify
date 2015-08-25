@@ -26,6 +26,12 @@ FLAG_M8 = $20
     rep #FLAG_M8 | FLAG_XY8
 .endmacro
 
+.macro ClearB
+    xba
+    lda     #0
+    xba
+.endmacro
+
 
 ; Taken from MAME's snes.h and ASM-ified
 
