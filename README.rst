@@ -5,7 +5,7 @@
  A conversion tool to create SNES graphics
 -------------------------------------------
 
-This tool is in alpha and all documentation is tentative. Features and functionality may change at random. Use at your own risk.
+This tool is in alpha and all documentation is tentative. Features and functionality may change at random, and the documentation may not match the program's current behavior. Use at your own risk.
 
 
 A note on performance
