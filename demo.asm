@@ -22,18 +22,12 @@ wFrameCounter:  .res 2
 wJoyState:      .res 2
 wPrevJoyState:  .res 2
 wImageId:       .res 2
-pImageInfo:
-pImageInfoL:    .res 1
-pImageInfoH:    .res 1
+pImageInfo:     .res 2
 bImageFormat:   .res 1
 
-lpPalette:
-lpPaletteL:     .res 1
-lpPaletteH:     .res 1
+lpPalette:      .res 2
 lpPaletteB:     .res 1
-wPaletteSize:
-wPaletteSizeL:  .res 1
-wPaletteSizeH:  .res 1
+wPaletteSize:   .res 2
 
 
 .segment "CODE"
@@ -117,94 +111,93 @@ BinData "Lenna8Pal", "images/8bit/lenna.pal"
 .segment "CODE"
 
 Main:
-        SetM8
-        SetXY16
+        SetM16
+        SetXY8
 
         ; Set Data Bank to Program Bank
         phk
         plb
 
         ; Enable FastROM
-        lda     #$01
-        sta     MEMSEL
+        ldx     #$01
+        stx     MEMSEL
 
         ; Init vars
-        ldx     #0
-        stx     wFrameCounter
-        stx     wJoyState
-        stx     wPrevJoyState
-        stx     wImageId
+        stz     wFrameCounter
+        stz     wJoyState
+        stz     wPrevJoyState
+        stz     wImageId
 
         ; Force blank
-        lda     #$80
-        sta     INIDISP
+        ldx     #$80
+        stx     INIDISP
 
         ; Set BG1 name table address
-        stz     BG1SC                       ; $0000
+        ldx     #0
+        stx     BG1SC                       ; $0000
 
         ; Set BG1 chr table address
-        lda     #$01                        ; $1000
-        sta     BG12NBA
+        ldx     #$01                        ; $1000
+        stx     BG12NBA
 
         ; Show BG1 only
-        lda     #$01
-        sta     TM
+        ldx     #$01
+        stx     TM
 
 
         ; Prepare DMA channels
         ; Channel 1 will be used for VRAM transfers
         ; Channel 2 will be used for general CGRAM transfers
         ; Channel 7 will be used for CGRAM transfers during hblank for scan16 graphics
-        lda     #$01                        ; 16-bit xfer to single register, incrementing
-        sta     DMAP0
-        stz     DMAP1                       ; 8-bit xfer to single register, incrementing
-        lda     #<VMDATAL
-        sta     BBAD0
-        lda     #<CGDATA
-        sta     BBAD1
+        ldx     #$01                        ; 16-bit xfer to single register, incrementing
+        stx     DMAP0
+        ldx     #$00                        ; 8-bit xfer to single register, incrementing
+        stx     DMAP1
+        ldx     #<VMDATAL
+        stx     BBAD0
+        ldx     #<CGDATA
+        stx     BBAD1
 
         ; Prepare DMA for namedata transfer
         ; (here we're reusing a couple regs from the chr data transfer)
         ; DMA source address
-        ldx     #.loword(NameData)
-        stx     A1T0L
-        lda     #^NameData
-        sta     A1B0
+        lda     #.loword(NameData)
+        sta     A1T0L
+        ldx     #^NameData
+        stx     A1B0
 
         ; DMA size
-        ldx     #NameDataSize
-        stx     DAS0L
+        lda     #NameDataSize
+        sta     DAS0L
 
         ; Set VRAM destination address to $0000
         stz     VMADDL
-        stz     VMADDH
 
         ; Execute DMA
-        lda     #$01
-        sta     MDMAEN
+        ldx     #$01
+        stx     MDMAEN
 
 
         ; Prepare DMA for palette transfer
         ; (we won't transfer right away; we'll do it during hblank)
-        stz     DMAP7                       ; 8-bit xfer to single register, incrementing
+        ldx     #0                          ; 8-bit xfer to single register, incrementing
+        stx     DMAP7
 
         ; DMA source bank
-        lda     #^LennaScan16Pal            ; not auto-updated during DMA
-        sta     A1B7
+        ldx     #^LennaScan16Pal            ; not auto-updated during DMA
+        stx     A1B7
 
         ; DMA destination register
-        lda     #<CGDATA
-        sta     BBAD7
+        ldx     #<CGDATA
+        stx     BBAD7
 
         ; Set up IRQ (but don't enable it yet)
-        ldx     #HIRQ_TIME
-        stx     HTIMEL
-        ldx     #0                          ; Don't run IRQ until vblank has ended
-        stx     VTIMEL
+        lda     #HIRQ_TIME
+        sta     HTIMEL
+        stz     VTIMEL                      ; Don't run IRQ until vblank has ended
         bra     @change_image
 
 @main_loop:
-        SetM16
         lda     wFrameCounter
 @wait_for_vblank:
         wai
@@ -247,11 +240,10 @@ Main:
         sta     wImageId
 @change_image:
         ; Load new image
-        SetM8
-        stz     NMITIMEN                    ; interrupts disabled
+        ldx     #0
+        stx     NMITIMEN                    ; interrupts disabled
 
         ; Get image info
-        SetM16
         lda     wImageId
         asl                                 ; entries are 16-bit
         tax
@@ -259,18 +251,17 @@ Main:
         sta     pImageInfo
 
         ; Force blank
-        SetM8
-        lda     #$80
-        sta     INIDISP
+        ldx     #$80
+        stx     INIDISP
 
         ; Get image format
         ldy     #0
         lda     (pImageInfo),y
-        sta     bImageFormat
+        tax
+        stx     bImageFormat
         iny
 
         ; Get BG mode
-        ClearB
         tax
         lda     FmtVideoMode,x
         sta     BGMODE
@@ -280,80 +271,75 @@ Main:
         lda     (pImageInfo),y
         sta     A1T0L
         iny
-        lda     (pImageInfo),y
-        sta     A1T0H
         iny
         lda     (pImageInfo),y
-        sta     A1B0
+        tax
+        stx     A1B0
         iny
 
         ; chr size
         lda     (pImageInfo),y
         sta     DAS0L
         iny
-        lda     (pImageInfo),y
-        sta     DAS0H
         iny
 
         ; Set VRAM destination address
-        ldx     #$1000
-        stx     VMADDL
+        lda     #$1000
+        sta     VMADDL
 
         ; palette source address
         lda     (pImageInfo),y
-        sta     lpPaletteL
+        sta     lpPalette
+        iny
         iny
         lda     (pImageInfo),y
-        sta     lpPaletteH
-        iny
-        lda     (pImageInfo),y
-        sta     lpPaletteB
+        tax
+        stx     lpPaletteB
         iny
 
         ; palette size
         lda     (pImageInfo),y
-        sta     wPaletteSizeL
+        sta     wPaletteSize
         iny
-        lda     (pImageInfo),y
-        sta     wPaletteSizeH
         iny
 
         ; Set CGRAM destination address
-        stz     CGADD
+        ldx     #0
+        stx     CGADD
 
         ; How we handle the palette depends on the format
-        lda     bImageFormat
-        cmp     #ImageFormat::scan16
+        ldx     bImageFormat
+        cpx     #ImageFormat::scan16
         beq     @scan16
 
         ; Not Scan16 format; load palette now
         ; DMA 1 will be the palette data
-        ldx     lpPalette
-        stx     A1T1L
-        lda     lpPaletteB
-        sta     A1B1
-        ldx     wPaletteSize
-        stx     DAS1L
+        lda     lpPalette
+        sta     A1T1L
+        ldx     lpPaletteB
+        stx     A1B1
+        lda     wPaletteSize
+        sta     DAS1L
 
         ; Execute DMA on channels 1 and 2
-        lda     #$03
-        sta     MDMAEN
+        ldx     #$03
+        stx     MDMAEN
         bra     @end
 
         ; Scan16 format; load palette later
 @scan16:
         ; Execute DMA on channel 1
-        lda     #$01
-        sta     MDMAEN
+        ldx     #$01
+        stx     MDMAEN
 
 @end:
         ; End force blank
-        lda     #$0f
-        sta     INIDISP
+        ldx     #$0f
+        stx     INIDISP
 
         ; Enable vblank
-        lda     #$81                        ; NMI only and auto-read
-        sta     NMITIMEN
+        ldx     #$81                        ; NMI only and auto-read
+        stx     NMITIMEN
 
         ; Done
         jmp     @main_loop
