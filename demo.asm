@@ -7,13 +7,6 @@
 HIRQ_TIME = 196
 
 
-; Joypad bit numbers
-BUTTON_RIGHT    = 1 << 8
-BUTTON_LEFT     = 1 << 9
-BUTTON_DOWN     = 1 << 10
-BUTTON_UP       = 1 << 11
-
-
 ; Order is significant!
 .enum ImageFormat
         _2bit
@@ -236,9 +229,9 @@ Main:
         and     wJoyState                   ; filter out buttons that are not currently pressed
 
         ; A now contains the buttons that have just been pressed
-        bit     #BUTTON_LEFT
+        bit     #JOY_LEFT
         bne     @left
-        bit     #BUTTON_RIGHT
+        bit     #JOY_RIGHT
         bne     @right
         bra     @main_loop
 @left:

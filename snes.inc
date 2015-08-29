@@ -33,6 +33,25 @@ FLAG_M8 = $20
 .endmacro
 
 
+; Joypad bit numbers
+JOY_R           = 1 << 4
+JOY_L           = 1 << 5
+JOY_X           = 1 << 6
+JOY_A           = 1 << 7
+JOY_RIGHT       = 1 << 8
+JOY_LEFT        = 1 << 9
+JOY_DOWN        = 1 << 10
+JOY_UP          = 1 << 11
+JOY_START       = 1 << 12
+JOY_SELECT      = 1 << 13
+JOY_Y           = 1 << 14
+JOY_B           = 1 << 15
+
+
+; RGB colors
+.define COLOR(r, g, b)  (b << 10 | g << 5 | r)
+
+
 ; Taken from MAME's snes.h and ASM-ified
 
 ; Definitions for PPU Memory-Mapped registers
