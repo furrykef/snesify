@@ -4,7 +4,7 @@
 
 ; This value depends on how long HandleIrq takes to get to the DMA
 ; See the big comment at HandleIrq
-HIRQ_TIME = 201
+HIRQ_TIME = 195
 
 
 ; Order is significant!
@@ -382,6 +382,8 @@ HandleVblankImpl:
 
 
 ; This implements scan16 rendering.
+;
+; (tl;dr: H clock after STA MDMAEN should be 1072 or slightly greater)
 ;
 ; Use BSNES debugger to time this function up to the instruction after the
 ; STA MDMAEN instruction. The H register in BSNES is the number of master cycles
