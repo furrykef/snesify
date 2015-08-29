@@ -4,7 +4,7 @@
 
 ; This value depends on how long HandleIrq takes to get to the DMA
 ; See the big comment at HandleIrq
-HIRQ_TIME = 196
+HIRQ_TIME = 201
 
 
 ; Order is significant!
