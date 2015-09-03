@@ -237,6 +237,8 @@ def processLine(img, line_num, palette, diffusion_filter, options):
             the_range = range(0, len(line))
         paletted_line = []
         for col in the_range:
+            # @TODO@ -- clipping may not be appropriate in non-RGB spaces
+            line[col] = line[col].clip(0.0, 1.0)
             color_idx = scipy.cluster.vq.vq([line[col]], palette, check_finite=False)[0][0]
             paletted_line.append(color_idx)
             error = line[col] - palette[color_idx]

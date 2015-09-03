@@ -6,7 +6,7 @@ Defaults
 I'm thinking these might be sensible defaults:
 * 2bit: vanilla unseeded k-means
 * 4bit: mini-batch unseeded k-means
-* scan16: mini-batch seeded k-means
+* scan16: vanilla unseeded k-means
 * 8bit: median-cut
 
 In particular, seeding doesn't seem to speed up processing with mini-batch except for scan16.
