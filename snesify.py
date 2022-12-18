@@ -2,7 +2,6 @@
 # Written for Python 3.4
 #
 # Dependencies
-#   pillow
 #   scikit-image
 #   scikit-learn
 #   ...and their dependencies
