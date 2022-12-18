@@ -95,10 +95,16 @@ def main(argv=None):
 
 def processFile(filename, palette, options):
     try:
-        img = skimage.io.imread(filename)[:,:,:3]   # The slice will remove any alpha channel
+        img = skimage.io.imread(filename)
     except (OSError, IOError) as e:
         print("{}: {}".format(filename, e), file=sys.stderr)
         return 1
+    if img.ndim == 2:
+        # Grayscale; convert to RGB
+        img = skimage.color.gray2rgb(img)
+    else:
+        # Remove alpha channel if present
+        img = img[:,:,:3]
     if USE_LAB:
         img = skimage.color.rgb2lab(img)
     else:
