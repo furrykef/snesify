@@ -146,8 +146,8 @@ Main:
 
 
         ; Prepare DMA channels
-        ; Channel 1 will be used for VRAM transfers
-        ; Channel 2 will be used for general CGRAM transfers
+        ; Channel 0 will be used for VRAM transfers
+        ; Channel 1 will be used for general CGRAM transfers
         ; Channel 7 will be used for CGRAM transfers during hblank for scan16 graphics
         ldx     #$01                        ; 16-bit xfer to single register, incrementing
         stx     DMAP0
