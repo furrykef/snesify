@@ -22,6 +22,10 @@ FLAG_M8 = $20
     rep #FLAG_XY8
 .endmacro
 
+.macro SetMXY8
+    sep #FLAG_M8 | FLAG_XY8
+.endmacro
+
 .macro SetMXY16
     rep #FLAG_M8 | FLAG_XY8
 .endmacro
@@ -251,3 +255,4 @@ DSAB7         = $4377
 A2A7L         = $4378
 A2A7H         = $4379
 NTRL7         = $437A
+
